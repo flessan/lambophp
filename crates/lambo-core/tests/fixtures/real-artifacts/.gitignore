@@ -1,0 +1,6 @@
+# Real runtime archives are tens of megabytes each and must never be committed.
+# Only the instructions and the example manifest are tracked.
+*
+!.gitignore
+!README.md
+!manifest.example.json

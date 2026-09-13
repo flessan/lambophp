@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose something that saves developers time, removes complexity, or reduces manual work.
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Features are judged by three questions: does it save time, does it
+        remove complexity, does it reduce manual work? Make that case.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What manual work or complexity exists today? Who feels it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Command sketch, config sketch, or UX flow. Concrete beats exhaustive.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "do nothing" - why is it insufficient? Could this be a plugin instead of core?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots of how other tools solve it, prior discussions.

@@ -1,0 +1,39 @@
+[package]
+name = "lambo-core"
+description = "Core engine of Lambo PHP: configuration, project detection, runtime management, service supervision, diagnostics. Contains all business logic; the CLI and GUI are thin shells over this crate."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+serde_json.workspace = true
+semver.workspace = true
+thiserror.workspace = true
+flate2.workspace = true
+crc32fast.workspace = true
+
+# Test-only helper binary: a deterministic HTTP server that stands in for
+# PHP's built-in server so the real up/down orchestration can be exercised
+# without PHP, Apache or MariaDB installed. It accepts the same arguments as
+# `php -S`, which is what lets `session::up` drive it unchanged.
+#
+# Not part of the product: it is never referenced by the download catalogue and
+# `scripts/package.sh` copies only the `lambo` binary, so it cannot reach a
+# release archive. See docs/development.md.
+[[bin]]
+name = "lambo-fixture-server"
+path = "tests/fixtures/fixture_server/main.rs"
+
+[dev-dependencies]
+# Only for tests: the public API hands out `InstalledRuntime`, whose `version`
+# is a `semver::Version`, so a test that builds one needs the type.
+semver.workspace = true
+
+[lints]
+workspace = true

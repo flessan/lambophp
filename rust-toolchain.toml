@@ -1,0 +1,8 @@
+# Toolchain used for development and CI.
+# Minimum supported Rust version (MSRV) is 1.85, verified in CI (see the
+# `msrv` job of .github/workflows/ci.yml). The pinned channel is `stable`
+# so contributors always build with a current compiler.
+[toolchain]
+channel = "stable"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

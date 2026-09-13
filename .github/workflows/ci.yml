@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Windows is a first-class platform here, not an afterthought: it is the
+  # first entry in the matrix so a Windows-only break fails the run fast.
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo test
+        run: cargo test --workspace --all-targets --locked
+
+  clippy:
+    name: clippy (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+  # Compiling for Windows on a Linux host catches the class of bug a Linux
+  # test run cannot see: Unix-only imports, path separators, signal handling.
+  # The reverse is equally useful, so both directions are checked.
+  cross-check:
+    name: cross-compile check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          targets: x86_64-pc-windows-msvc, aarch64-unknown-linux-gnu
+
+      - name: check for windows-msvc
+        run: cargo check --workspace --all-targets --locked --target x86_64-pc-windows-msvc
+
+      - name: check for linux-aarch64
+        run: cargo check --workspace --locked --target aarch64-unknown-linux-gnu
+
+  # The Windows-specific behaviour Lambo promises — path shapes, spawning,
+  # clean shutdown, port detection, runtime discovery, executable resolution,
+  # service lifecycle and filesystem operations — is exercised by dedicated
+  # tests. They run on the real platform, not only against the `Os` model.
+  windows-behaviour:
+    name: windows behaviour
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: platform, process and path tests
+        run: >
+          cargo test --workspace --locked --
+          platform:: process:: port:: paths:: runtime:: fsx:: archive::
+          state:: apache:: database::
+
+      - name: service lifecycle
+        run: cargo test --workspace --locked "session::"
+
+      - name: the CLI itself
+        run: |
+          cargo build --locked --release
+          .\target\release\lambo.exe --version
+          .\target\release\lambo.exe --help
+          .\target\release\lambo.exe doctor

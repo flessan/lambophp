@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Copy this file to <something>.json in this directory and fill it in.",
+    "The test in crates/lambo-core/tests/real_artifacts.rs reads every *.json",
+    "here except this example, and skips entirely when there are none.",
+    "",
+    "Check `sha256` against the publisher's own published value before you",
+    "trust it. A digest computed from the file being tested only proves the",
+    "file equals itself."
+  ],
+  "family": "php",
+  "version": "8.4.2",
+  "platform": "linux-x64",
+  "file": "php-8.4.2-cli-linux-x86_64.tar.gz",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "archive_format": "tar.gz",
+  "executable": "bin/php"
+}

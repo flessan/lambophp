@@ -1,0 +1,64 @@
+name: Bug report
+description: Something Lambo does is wrong, surprising, or broken.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Detection issues are bugs too: if `lambo init`
+        guessed wrong, paste the evidence it printed.
+
+  - type: input
+    id: version
+    attributes:
+      label: Lambo version
+      description: Output of `lambo --version`.
+      placeholder: "lambo 0.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Fedora 41 / macOS 15 / Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Include the exact command and its full output. Paste `lambo doctor` and `lambo logs apache -n 200` output when relevant.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. cd my-project
+        2. lambo init
+        3. ...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability (those go to Security Advisories).
+          required: true

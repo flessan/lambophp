@@ -1,0 +1,20 @@
+# Rust build artifacts. NOTE: Cargo.lock is intentionally tracked -
+# this workspace produces a binary, and binaries commit their lockfile.
+/target
+**/*.rs.bk
+*.pdb
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Build output from scripts/package.sh
+/dist/
+
+# Local Lambo data when LAMBO_HOME is pointed at the repo during development
+/.lambo/

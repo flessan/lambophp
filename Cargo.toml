@@ -1,0 +1,61 @@
+# Lambo PHP workspace root.
+#
+# Crate map (docs/architecture.md):
+#   crates/lambo-core  - the core engine; owns ALL business logic
+#   crates/lambo-cli   - the `lambo` binary; a thin shell over lambo-core
+#
+# Future interfaces join as `crates/lambo-tui` (ratatui) and the Tauri GUI.
+# Both are thin shells over lambo-core by architectural rule, which is what
+# keeps CLI, TUI and GUI behaviour identical.
+
+[workspace]
+resolver = "3"
+members = ["crates/lambo-core", "crates/lambo-cli", "crates/lambo-gui"]
+
+[workspace.package]
+version = "0.13.0-rc.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/flessan/kink-php-dev"
+homepage = "https://lambo-php.dev"
+
+[workspace.dependencies]
+# Internal crates.
+lambo-core = { path = "crates/lambo-core" }
+lambo-gui = { path = "crates/lambo-gui" }
+
+# External crates. Versions are pinned at the workspace level only;
+# member crates reference them with `dep.workspace = true`.
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9" # Backend isolated behind lambo_core::yaml (ADR-0004).
+serde_json = "1"
+semver = "1"
+thiserror = "2"
+
+# clap is used without its default `color` feature on purpose: it keeps the
+# dependency tree free of terminal-colour crates (and their platform-specific
+# transitive dependencies) while Lambo paints its own output through
+# `lambo_cli::ui`, which decides about colour once, for every command.
+clap = { version = "4", default-features = false, features = [
+    "derive",
+    "std",
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+] }
+
+# Pure-Rust inflate used by `lambo_core::archive` to unpack PHP, Apache,
+# MariaDB and Adminer downloads without shelling out to a system `tar`.
+flate2 = "1"
+crc32fast = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+# Small, fast-starting release binaries.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

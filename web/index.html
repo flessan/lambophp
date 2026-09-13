@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lambo PHP - A Native Local PHP Development Environment</title>
+  <meta name="description" content="One binary that installs and runs PHP, Apache and MariaDB for your projects - no Docker, no hand-edited httpd.conf or php.ini, no changes to your PATH. Windows first, Linux and macOS too. Rust-powered, open source." />
+  <meta property="og:title" content="Lambo PHP - A Native Local PHP Development Environment" />
+  <meta property="og:description" content="lambo init, lambo up, http://localhost:8080. PHP, Apache and MariaDB managed for you - written in Rust." />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#0b0e13" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="main.js" defer></script>
+</head>
+<body>
+
+  <!-- ======================= NAV ======================= -->
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="nav__brand" href="#top" aria-label="Lambo PHP home">
+        <img src="favicon.svg" alt="" width="26" height="26" />
+        <span>Lambo PHP</span>
+      </a>
+      <nav class="nav__links" aria-label="Sections">
+        <a href="#demo">Demo</a>
+        <a href="#features">Features</a>
+        <a href="#compare">Compare</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="https://github.com/flessan/kink-php-dev/tree/main/docs">Docs</a>
+      </nav>
+      <a class="nav__gh" href="https://github.com/flessan/kink-php-dev" aria-label="GitHub repository">
+        <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ======================= HERO ======================= -->
+    <section class="hero">
+      <div class="wrap">
+        <p class="hero__kicker reveal">Written in Rust · MIT OR Apache-2.0</p>
+        <h1 class="hero__title reveal">
+          A native local <span class="grad">PHP development</span> environment.
+        </h1>
+        <p class="hero__sub reveal">
+          <code>lambo init</code> works out what your project is and
+          <code>lambo up</code> gives it PHP, Apache and MariaDB. No Docker.
+          No <code>httpd.conf</code> or <code>php.ini</code> to edit. No changes
+          to your <code>PATH</code>, and no sudo.
+        </p>
+
+        <div class="install reveal" id="install-hero">
+          <code class="install__cmd" id="install-cmd">curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh</code>
+          <button class="install__copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh" aria-label="Copy install command">
+            <svg class="icon-copy" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h10v12H9z"/><path fill="none" stroke="currentColor" stroke-width="2" d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+            <svg class="icon-check" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M4 12.5 9.5 18 20 6"/></svg>
+          </button>
+          <span class="visually-hidden" aria-live="polite" data-copy-status></span>
+        </div>
+
+        <div class="hero__actions reveal">
+          <a class="btn btn--primary" href="#demo">Watch it work</a>
+          <a class="btn" href="https://github.com/flessan/kink-php-dev">Star on GitHub</a>
+        </div>
+
+        <ul class="hero__chips reveal" role="list">
+          <li>Windows 10/11 first</li>
+          <li>Linux · macOS</li>
+          <li>Port 8080 · no admin rights</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ======================= DEMO ======================= -->
+    <section class="section" id="demo">
+      <div class="wrap">
+        <h2 class="section__title reveal">See <span class="grad">lambo</span> work</h2>
+        <p class="section__sub reveal">
+          Real output, copied from a terminal - including the last command
+          failing. Nothing staged, nothing edited.
+        </p>
+
+        <div class="term reveal" role="img" aria-label="Terminal demo: lambo init detects a plain PHP project and writes lambo.yml, lambo doctor reports what is missing, lambo up refuses to run a download it cannot verify">
+          <div class="term__bar">
+            <span class="term__dot term__dot--r"></span>
+            <span class="term__dot term__dot--y"></span>
+            <span class="term__dot term__dot--g"></span>
+            <span class="term__title">~/code/shop - lambo</span>
+            <button class="term__replay" id="term-replay" type="button">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 3.2-6.9M3 4v5h5"/></svg>
+              replay
+            </button>
+          </div>
+          <div class="term__body" id="term-body" aria-hidden="true"></div>
+          <noscript>
+            <pre class="term__body">$ lambo init
+✔ created `/home/dev/shop/lambo.yml`
+── Detected
+  framework      plain PHP
+  · [no ] composer.json
+  · [no ] artisan (Laravel's console entry point)
+  · [yes] index.php
+── Configuration
+  php            stable
+  server         apache
+  document root  .
+  database       disabled
+
+$ lambo doctor
+── Diagnostics
+✔ lambo home: /home/dev/.lambo
+✔ catalogue: 2 PHP, 0 Apache and 1 MariaDB releases for linux-x64
+✖ php: no PHP version is installed
+  hint: lambo php install stable
+✔ ports: server.port: 8080 is free
+✔ project: shop: plain PHP served from /home/dev/shop
+
+$ lambo up --no-browser
+── Starting shop
+error: PHP stable failed to start: download failed: … no checksum is
+available for this download, so it cannot be verified.
+  next: lambo php install stable, or `lambo init --php &lt;version&gt;`</pre>
+          </noscript>
+        </div>
+        <p class="term__note reveal">That last failure is deliberate and it is the point: the catalogue ships with no pinned checksums, so Lambo refuses to run a download it cannot verify. <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/installation.md#pinning-checksums">Pin one and it runs ↗</a></p>
+      </div>
+    </section>
+
+    <!-- ======================= FEATURES ======================= -->
+    <section class="section" id="features">
+      <div class="wrap">
+        <h2 class="section__title reveal">Built to get out of your way</h2>
+        <p class="section__sub reveal">Every feature answers one question: does it delete manual work?</p>
+
+        <div class="cards">
+          <article class="card reveal">
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+            <h3>One command</h3>
+            <p><code>lambo init</code> detects your framework from evidence - artisan, composer.json, wp-config - and writes the environment to <code>lambo.yml</code>, showing every probe, including the ones that came back negative.</p>
+            <code class="card__code">lambo init</code>
+          </article>
+
+          <article class="card reveal">
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 2.5 20 6v6c0 5-3.5 8.4-8 9.5C7.5 20.4 4 17 4 12V6z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m9 11.5 2 2 4-4"/></svg>
+            <h3>No sudo, ever</h3>
+            <p>Everything lives in <code>%USERPROFILE%\Lambo</code> or <code>~/.lambo</code>. Ports are unprivileged (8080/8443), the installer is per-user, and the database binds to loopback only.</p>
+            <code class="card__code">lambo config set server.port 8080</code>
+          </article>
+
+          <article class="card reveal">
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m7 9 3 3-3 3m5 0h5"/></svg>
+            <h3>Native, not Docker</h3>
+            <p>Real filesystem, real localhost, real debugger. Your OS is the runtime - Lambo manages it, so there is no compose file and no volume mount to debug.</p>
+            <code class="card__code">lambo status</code>
+          </article>
+
+          <article class="card reveal">
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M14 3v5h5M9 15l-2-2 2-2m4 4 2-2-2-2"/></svg>
+            <h3>Environment as code</h3>
+            <p><code>lambo.yml</code> is human-readable YAML you commit. PHP version, server, database, extensions - the whole environment travels with the repository, with relative paths only.</p>
+            <code class="card__code">php: "8.4" # pins the 8.4.x line</code>
+          </article>
+
+          <article class="card reveal">
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+            <h3>Doctor, with an answer</h3>
+            <p>Home, transport, catalogue, runtimes, ports, project, services - <code>lambo doctor</code> checks them in the order <code>lambo up</code> uses, and every finding names the command that fixes it.</p>
+            <code class="card__code">lambo doctor</code>
+          </article>
+
+          <article class="card reveal">
+            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="13" width="18" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="7" cy="7.5" r="1" fill="currentColor"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/></svg>
+            <h3>Workspaces</h3>
+            <p>Group the projects you actually work on. A workspace is a list of directories and nothing more, so a project behaves the same inside and outside one.</p>
+            <code class="card__code">lambo workspace add</code>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= COMPARE ======================= -->
+    <section class="section" id="compare">
+      <div class="wrap">
+        <h2 class="section__title reveal">Why not the tools you already know?</h2>
+        <p class="section__sub reveal">Honest comparison, best of our knowledge mid-2026. <a href="https://github.com/flessan/kink-php-dev/edit/main/web/index.html">Corrections welcome.</a></p>
+
+        <div class="tablewrap reveal" tabindex="0" role="region" aria-label="Feature comparison" aria-describedby="compare-note">
+          <table class="compare">
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col" class="compare__lambo">Lambo PHP</th>
+                <th scope="col">XAMPP</th>
+                <th scope="col">Laragon</th>
+                <th scope="col">Docker</th>
+                <th scope="col">Herd</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Runs natively (no containers)</th>
+                <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="n">-</td><td class="y">✓</td>
+              </tr>
+              <tr>
+                <th scope="row">Per-project PHP versions</th>
+                <td class="y">✓</td><td class="n">-</td><td class="p">partial</td><td class="y">✓</td><td class="p">partial</td>
+              </tr>
+              <tr>
+                <th scope="row">No sudo for daily work</th>
+                <td class="y">✓</td><td class="p">partial</td><td class="p">partial</td><td class="p">partial</td><td class="p">partial</td>
+              </tr>
+              <tr>
+                <th scope="row">Linux-first</th>
+                <td class="y">✓</td><td class="p">partial</td><td class="n">-</td><td class="y">✓</td><td class="n">-</td>
+              </tr>
+              <tr>
+                <th scope="row">One-command project bootstrap</th>
+                <td class="y">✓</td><td class="n">-</td><td class="y">✓</td><td class="n">-</td><td class="p">partial</td>
+              </tr>
+              <tr>
+                <th scope="row">Environment as code (committed)</th>
+                <td class="y">✓</td><td class="n">-</td><td class="n">-</td><td class="y">✓</td><td class="n">-</td>
+              </tr>
+              <tr>
+                <th scope="row">Built-in diagnostics &amp; repair</th>
+                <td class="y">✓</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td>
+              </tr>
+              <tr>
+                <th scope="row">Fully open source</th>
+                <td class="y">✓</td><td class="n">-</td><td class="n">-</td><td class="p">partial</td><td class="n">-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine" id="compare-note">"partial" = possible with caveats: admin installers, global-not-per-project switching, pro tiers, or root-equivalent daemon groups. We like these tools - Lambo PHP just makes different promises.</p>
+      </div>
+    </section>
+
+    <!-- ======================= BUDGETS ======================= -->
+    <section class="section section--tight">
+      <div class="wrap">
+        <div class="budgets reveal">
+          <div class="budget"><strong>&lt; 50 ms</strong><span>cold start</span></div>
+          <div class="budget"><strong>&lt; 100 ms</strong><span>lambo status</span></div>
+          <div class="budget"><strong>&lt; 8 MB</strong><span>release binary</span></div>
+          <div class="budget"><strong>&lt; 50 MB</strong><span>resident memory</span></div>
+        </div>
+        <p class="fine center reveal">Design budgets from <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/architecture.md">docs/architecture.md</a> - enforced in CI from M7. Targets we're held to, not ads.</p>
+      </div>
+    </section>
+
+    <!-- ======================= ROADMAP ======================= -->
+    <section class="section" id="roadmap">
+      <div class="wrap">
+        <h2 class="section__title reveal">The road ahead</h2>
+        <p class="section__sub reveal">The engine is done. What is left is release engineering, and it is listed honestly.</p>
+
+        <ol class="road" role="list">
+          <li class="road__item road__item--done reveal">
+            <div class="road__m">✓</div>
+            <div><h3>Engine and CLI <span class="tag tag--done">shipped</span></h3>
+            <p>PHP, Apache and MariaDB installed and supervised; <code>init</code>, <code>up</code>, <code>down</code>, <code>status</code>, <code>open</code>, <code>doctor</code>, <code>logs</code>, <code>db</code>, <code>server</code>, <code>config</code>, <code>migrate</code>. 318 tests, clippy clean on Windows, Linux and macOS.</p></div>
+          </li>
+          <li class="road__item road__item--now reveal">
+            <div class="road__m">1</div>
+            <div><h3>Pinned checksums <span class="tag tag--now">next</span></h3>
+            <p>The catalogue ships with <code>sha256: null</code>, so a fresh machine cannot install anything until you pin a digest. That is the one thing standing between here and "just works".</p></div>
+          </li>
+          <li class="road__item reveal">
+            <div class="road__m">2</div>
+            <div><h3>Apache and MariaDB for macOS <span class="tag">planned</span></h3>
+            <p>No catalogue entries yet; Homebrew's builds are found on <code>PATH</code> in the meantime, or use <code>server.kind: php</code>.</p></div>
+          </li>
+          <li class="road__item reveal">
+            <div class="road__m">3</div>
+            <div><h3>HTTPS <span class="tag">planned</span></h3>
+            <p><code>server.https_port</code> is reserved and the configuration models it, but no local CA is generated yet - <code>lambo up</code> serves plain HTTP on 8080 and says so.</p></div>
+          </li>
+          <li class="road__item reveal">
+            <div class="road__m">4</div>
+            <div><h3>Workspaces that start <span class="tag">planned</span></h3>
+            <p>Per-project ports already work. What is missing is starting a whole workspace and tracking which project holds which port.</p></div>
+          </li>
+        </ol>
+        <p class="center reveal"><a href="https://github.com/flessan/kink-php-dev/blob/main/docs/roadmap.md">Full roadmap with acceptance criteria ↗</a></p>
+      </div>
+    </section>
+
+    <!-- ======================= INSTALL ======================= -->
+    <section class="section" id="install">
+      <div class="wrap">
+        <h2 class="section__title reveal">Install in one line</h2>
+        <p class="section__sub reveal">One binary, no sudo, nothing else to install. Windows users: <code>LamboPHP-Setup.exe</code> from Releases.</p>
+
+        <div class="install install--block reveal">
+          <code class="install__cmd">curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh</code>
+          <button class="install__copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh" aria-label="Copy install command">
+            <svg class="icon-copy" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h10v12H9z"/><path fill="none" stroke="currentColor" stroke-width="2" d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+            <svg class="icon-check" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M4 12.5 9.5 18 20 6"/></svg>
+          </button>
+          <span class="visually-hidden" aria-live="polite" data-copy-status></span>
+        </div>
+
+        <div class="installalt reveal">
+          <div>
+            <h4>Everything it installs</h4>
+            <p>One binary, plus <code>%USERPROFILE%\Lambo</code> or <code>~/.lambo</code> on first use. That is the whole footprint.</p>
+          </div>
+          <div>
+            <h4>From source</h4>
+            <p><code>git clone https://github.com/flessan/kink-php-dev &amp;&amp; cd kink-php-dev &amp;&amp; cargo build --release</code></p>
+          </div>
+          <div>
+            <h4>Uninstall</h4>
+            <p>Run the uninstaller, or <code>rm -rf ~/.lambo ~/.local/bin/lambo</code>. Your data is never deleted for you.</p>
+          </div>
+        </div>
+
+        <p class="fine center reveal">Windows users: grab <code>LamboPHP-Setup.exe</code> or the portable <code>LamboPHP-windows-amd64.zip</code> from <a href="https://github.com/flessan/kink-php-dev/releases">Releases</a>. Portable mode: set <code>LAMBO_HOME</code> anywhere - even a USB stick.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======================= FOOTER ======================= -->
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <div class="footer__brand">
+        <img src="favicon.svg" alt="" width="22" height="22" />
+        <span>Lambo PHP</span>
+        <span class="footer__tag">The native PHP workspace manager.</span>
+      </div>
+      <nav class="footer__links" aria-label="Footer">
+        <a href="https://github.com/flessan/kink-php-dev">GitHub</a>
+        <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/commands.md">Commands</a>
+        <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/faq.md">FAQ</a>
+        <a href="https://github.com/flessan/kink-php-dev/blob/main/CONTRIBUTING.md">Contribute</a>
+        <a href="https://github.com/flessan/kink-php-dev/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/flessan/kink-php-dev/security/advisories/new">Security</a>
+      </nav>
+      <p class="footer__copy">MIT OR Apache-2.0 · © <span id="year">2026</span> Lambo PHP contributors · Built with Rust 🦀</p>
+    </div>
+  </footer>
+
+</body>
+</html>

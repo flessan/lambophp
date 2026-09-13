@@ -1,0 +1,3 @@
+[PHP]
+; Windows builds ship php.ini-development rather than php.ini, so a fresh
+; install has no configuration until Lambo generates one.

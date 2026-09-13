@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/flessan/kink-php-dev/discussions
+    about: Usage questions, ideas, and show-and-tell - please use Discussions.
+  - name: Security vulnerability
+    url: https://github.com/flessan/kink-php-dev/security/advisories/new
+    about: Never report vulnerabilities in public issues. See SECURITY.md.

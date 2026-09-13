@@ -1,0 +1,45 @@
+[package]
+name = "lambo-gui"
+description = "Native desktop interface for Lambo PHP. Thin view over lambo-core's application API; contains no business logic."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[[bin]]
+name = "lambo-gui"
+path = "src/main.rs"
+
+[dependencies]
+lambo-core.workspace = true
+
+# The GUI is Win32, and Win32 is FFI. `unsafe_code = "forbid"` is the right
+# default for the engine and the CLI, so it is overridden here rather than
+# globally - see the note in src/win32.rs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Controls",
+    "Win32_UI_Input_KeyboardAndMouse",
+    # `WNDCLASSW` and `RegisterClassW` are gated behind Gdi in windows-sys,
+    # because a window class carries a background brush handle.
+    "Win32_Graphics_Gdi",
+    # `SS_NOTIFY`, which is what lets a static control report a click. Without
+    # it the project rows on the Projects screen are inert text.
+    "Win32_System_SystemServices",
+] }
+
+# The workspace forbids unsafe code everywhere. A Win32 GUI cannot exist without
+# it, so this crate opts out explicitly and locally instead of weakening the
+# rule for the engine that does not need it.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+# Win32 signatures are what they are; matching them is not a style choice.
+too_many_arguments = "allow"

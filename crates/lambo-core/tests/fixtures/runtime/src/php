@@ -1,0 +1,139 @@
+#!/bin/sh
+# Lambo test fixture standing in for the `php` CLI.
+#
+# THIS IS NOT PHP AND DOES NOT INTERPRET PHP. It implements only the narrow
+# command surface Lambo drives - version reporting, configuration discovery
+# through PHPRC, module listing, and running a script - so that Lambo's own
+# runtime code paths are exercised end to end in CI without a PHP build.
+#
+# Every other invocation exits non-zero on purpose. A test that needs behaviour
+# this fixture does not model must fail rather than quietly pass, which is why
+# the unsupported cases are loud instead of permissive.
+#
+# Tests that must prove something about real PHP are gated on
+# tests/fixtures/real-artifacts/ and skip when no artifact is supplied.
+#
+# Behaviour is controlled by control files next to this script rather than by
+# environment variables, so a test can make a *specific installed runtime*
+# misbehave without mutating the test process's own environment:
+#
+#   .fixture-fail     exit with this code, as a runtime that will not start
+#   .fixture-version  report this version instead of the built-in one
+
+here="$(cd "$(dirname "$0")" && pwd)"
+
+version="8.4.2"
+if [ -f "$here/.fixture-version" ]; then
+    reported="$(cat "$here/.fixture-version" 2>/dev/null)"
+    if [ -n "$reported" ]; then
+        version="$reported"
+    fi
+fi
+
+# Simulate a runtime that will not start: a Windows build unpacked on Linux, a
+# binary linked against a library this machine lacks, an archive that verified
+# perfectly and contained the wrong thing.
+if [ -f "$here/.fixture-fail" ]; then
+    code="$(cat "$here/.fixture-fail" 2>/dev/null)"
+    if [ -z "$code" ]; then
+        code=1
+    fi
+    echo "fixture php: error while loading shared libraries: libfixture.so.1: cannot open shared object file" >&2
+    exit "$code"
+fi
+
+# Resolve the configuration file the way the real CLI does: PHPRC names either
+# a directory containing php.ini or the ini file itself.
+ini=""
+if [ -n "${PHPRC:-}" ]; then
+    if [ -d "$PHPRC" ]; then
+        if [ -f "$PHPRC/php.ini" ]; then
+            ini="$PHPRC/php.ini"
+        fi
+    elif [ -f "$PHPRC" ]; then
+        ini="$PHPRC"
+    fi
+fi
+
+case "${1:-}" in
+    -v | --version)
+        echo "PHP $version (cli) (built: Dec 17 2024 18:22:53) (NTS)"
+        echo "Copyright (c) The PHP Group"
+        echo "Zend Engine v4.4.2, Copyright (c) Zend Technologies"
+        exit 0
+        ;;
+    --ini)
+        echo "Configuration File (php.ini) Path: /lambo/fixture/etc"
+        if [ -n "$ini" ]; then
+            echo "Loaded Configuration File:         $ini"
+        else
+            echo "Loaded Configuration File:         (none)"
+        fi
+        echo "Scan this dir for additional .ini files: (none)"
+        echo "Additional .ini files parsed:      (none)"
+        exit 0
+        ;;
+    -m)
+        echo "[PHP Modules]"
+        echo "Core"
+        echo "date"
+        echo "standard"
+        # Modules come from the ini Lambo generated, so a test asserting the
+        # module list is really asserting that PHPRC reached this process.
+        if [ -n "$ini" ]; then
+            sed -n 's/^extension=//p' "$ini" 2>/dev/null
+        fi
+        echo ""
+        echo "[Zend Modules]"
+        exit 0
+        ;;
+    -r)
+        code="${2:-}"
+        case "$code" in
+            *PHP_VERSION*)
+                printf '%s' "$version"
+                ;;
+            *ini_loaded_file*)
+                # The real function returns false, and (string) false is empty,
+                # so an absent configuration file prints nothing at all.
+                if [ -n "$ini" ]; then
+                    printf '%s' "$ini"
+                fi
+                ;;
+            *)
+                echo "fixture php: unsupported -r code: $code" >&2
+                echo "fixture php: this fixture models only PHP_VERSION and ini_loaded_file()" >&2
+                exit 64
+                ;;
+        esac
+        exit 0
+        ;;
+    -S)
+        # Delegate to the fixture HTTP server so serve_spec is tested for real.
+        if [ -z "${LAMBO_FIXTURE_SERVER:-}" ]; then
+            echo "fixture php: LAMBO_FIXTURE_SERVER is not set, cannot serve" >&2
+            exit 69
+        fi
+        shift
+        exec "$LAMBO_FIXTURE_SERVER" "$@"
+        ;;
+    -*)
+        echo "fixture php: unsupported option ${1}" >&2
+        echo "fixture php: this is a Lambo test fixture, not a PHP interpreter" >&2
+        exit 64
+        ;;
+esac
+
+# Anything else is a script path.
+script="${1:-}"
+if [ -z "$script" ]; then
+    echo "fixture php: no script given" >&2
+    exit 64
+fi
+if [ ! -f "$script" ]; then
+    echo "Could not open input file: $script" >&2
+    exit 2
+fi
+echo "fixture-php ran $script"
+cat "$script"
+exit 0

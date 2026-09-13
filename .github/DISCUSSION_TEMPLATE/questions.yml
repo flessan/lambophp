@@ -1,0 +1,15 @@
+title: "[question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask away. Check the [FAQ](https://github.com/flessan/kink-php-dev/blob/main/docs/faq.md) first.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: Include `lambo --version`, your OS, and relevant config or lambo.yml excerpts.
+    validations:
+      required: true

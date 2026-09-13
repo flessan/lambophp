@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "_comment": [
+    "Lambo PHP download catalogue.",
+    "",
+    "This file is data, not code. It ships inside the binary so that",
+    "`lambo php list` works without network access, and it can be overridden",
+    "per family by dropping a file of the same shape into",
+    "$LAMBO_HOME/config/catalogs/ (php.json, apache.json, mariadb.json,",
+    "mysql.json, dbui.json). Entries there replace the ones below when",
+    "version and platform match, which is how a stale URL or a corporate",
+    "mirror is fixed without waiting for a Lambo release.",
+    "",
+    "Checksums: `sha256` is optional. When it is null the downloader fetches",
+    "the upstream `<url>.sha256` sidecar and verifies against that; when",
+    "neither is available the download is refused. Nothing is ever extracted",
+    "or executed before it has been verified.",
+    "",
+    "Platform keys are <os>-<arch>: windows-x64, linux-x64, linux-arm64,",
+    "macos-x64, macos-arm64. See docs/installation.md."
+  ],
+  "php": [
+    {
+      "version": "8.4.2",
+      "platform": "windows-x64",
+      "url": "https://windows.php.net/downloads/releases/archives/php-8.4.2-Win32-vs17-x64.zip",
+      "sha256": null
+    },
+    {
+      "version": "8.3.16",
+      "platform": "windows-x64",
+      "url": "https://windows.php.net/downloads/releases/archives/php-8.3.16-Win32-vs16-x64.zip",
+      "sha256": null
+    },
+    {
+      "version": "8.2.27",
+      "platform": "windows-x64",
+      "url": "https://windows.php.net/downloads/releases/archives/php-8.2.27-Win32-vs16-x64.zip",
+      "sha256": null
+    },
+    {
+      "version": "8.4.2",
+      "platform": "linux-x64",
+      "url": "https://dl.static-php.dev/static-php-cli/common/php-8.4.2-cli-linux-x86_64.tar.gz",
+      "sha256": null
+    },
+    {
+      "version": "8.3.16",
+      "platform": "linux-x64",
+      "url": "https://dl.static-php.dev/static-php-cli/common/php-8.3.16-cli-linux-x86_64.tar.gz",
+      "sha256": null
+    },
+    {
+      "version": "8.4.2",
+      "platform": "linux-arm64",
+      "url": "https://dl.static-php.dev/static-php-cli/common/php-8.4.2-cli-linux-aarch64.tar.gz",
+      "sha256": null
+    },
+    {
+      "version": "8.4.2",
+      "platform": "macos-x64",
+      "url": "https://dl.static-php.dev/static-php-cli/common/php-8.4.2-cli-macos-x86_64.tar.gz",
+      "sha256": null
+    },
+    {
+      "version": "8.4.2",
+      "platform": "macos-arm64",
+      "url": "https://dl.static-php.dev/static-php-cli/common/php-8.4.2-cli-macos-aarch64.tar.gz",
+      "sha256": null
+    }
+  ],
+  "apache": [
+    {
+      "version": "2.4.62",
+      "platform": "windows-x64",
+      "url": "https://dlcdn.apache.org/httpd/binaries/win32/httpd-2.4.62-win64-VS17.zip",
+      "sha256": null
+    },
+    {
+      "version": "2.4.58",
+      "platform": "windows-x64",
+      "url": "https://archive.apache.org/dist/httpd/binaries/win32/httpd-2.4.58-win64-VS16.zip",
+      "sha256": null
+    }
+  ],
+  "mariadb": [
+    {
+      "version": "11.4.4",
+      "platform": "windows-x64",
+      "url": "https://archive.mariadb.org/mariadb-11.4.4/winx64-packages/mariadb-11.4.4-winx64.zip",
+      "sha256": null
+    },
+    {
+      "version": "10.11.10",
+      "platform": "windows-x64",
+      "url": "https://archive.mariadb.org/mariadb-10.11.10/winx64-packages/mariadb-10.11.10-winx64.zip",
+      "sha256": null
+    },
+    {
+      "version": "11.4.4",
+      "platform": "linux-x64",
+      "url": "https://archive.mariadb.org/mariadb-11.4.4/bintar-linux-systemd-x86_64/mariadb-11.4.4-linux-systemd-x86_64.tar.gz",
+      "sha256": null
+    },
+    {
+      "version": "11.4.4",
+      "platform": "linux-arm64",
+      "url": "https://archive.mariadb.org/mariadb-11.4.4/bintar-linux-systemd-aarch64/mariadb-11.4.4-linux-systemd-aarch64.tar.gz",
+      "sha256": null
+    }
+  ],
+  "mysql": [
+    {
+      "version": "8.0.40",
+      "platform": "windows-x64",
+      "url": "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-8.0.40-winx64.zip",
+      "sha256": null
+    }
+  ],
+  "dbui": [
+    {
+      "version": "5.2.3",
+      "platform": "windows-x64",
+      "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+      "sha256": null,
+      "checksum_url": null,
+      "archive_format": "zip",
+      "filename": "phpMyAdmin-5.2.3-all-languages.zip"
+    },
+    {
+      "version": "5.2.3",
+      "platform": "linux-x64",
+      "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+      "sha256": null,
+      "checksum_url": null,
+      "archive_format": "zip",
+      "filename": "phpMyAdmin-5.2.3-all-languages.zip"
+    },
+    {
+      "version": "5.2.3",
+      "platform": "linux-arm64",
+      "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+      "sha256": null,
+      "checksum_url": null,
+      "archive_format": "zip",
+      "filename": "phpMyAdmin-5.2.3-all-languages.zip"
+    },
+    {
+      "version": "5.2.3",
+      "platform": "macos-x64",
+      "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+      "sha256": null,
+      "checksum_url": null,
+      "archive_format": "zip",
+      "filename": "phpMyAdmin-5.2.3-all-languages.zip"
+    },
+    {
+      "version": "5.2.3",
+      "platform": "macos-arm64",
+      "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+      "sha256": null,
+      "checksum_url": null,
+      "archive_format": "zip",
+      "filename": "phpMyAdmin-5.2.3-all-languages.zip"
+    },
+    {
+      "version": "4.8.1",
+      "platform": "windows-x64",
+      "url": "https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
+      "sha256": null,
+      "checksum_url": null
+    },
+    {
+      "version": "4.8.1",
+      "platform": "linux-x64",
+      "url": "https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
+      "sha256": null,
+      "checksum_url": null
+    },
+    {
+      "version": "4.8.1",
+      "platform": "linux-arm64",
+      "url": "https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
+      "sha256": null,
+      "checksum_url": null
+    },
+    {
+      "version": "4.8.1",
+      "platform": "macos-x64",
+      "url": "https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
+      "sha256": null,
+      "checksum_url": null
+    },
+    {
+      "version": "4.8.1",
+      "platform": "macos-arm64",
+      "url": "https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php",
+      "sha256": null,
+      "checksum_url": null
+    }
+  ]
+}

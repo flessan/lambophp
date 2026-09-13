@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "fixture php.exe is a placeholder: Lambo never executes the Windows archive on Linux"
+exit 64

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Lambo test fixture standing in for php-config.
+case "${1:-}" in
+    --prefix) echo "/lambo/php/8.4.2" ;;
+    --version) echo "8.4.2" ;;
+    --include-dir) echo "/lambo/php/8.4.2/include/php" ;;
+    *) echo "fixture php-config: unsupported option ${1:-}" >&2; exit 64 ;;
+esac

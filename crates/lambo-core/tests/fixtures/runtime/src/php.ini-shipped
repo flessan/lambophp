@@ -1,0 +1,4 @@
+[PHP]
+; Shipped inside the fixture archive. Lambo never reads this file: it writes
+; its own php.ini and points PHP at it through PHPRC.
+extension_dir = "/lambo/php/8.4.2/lib"

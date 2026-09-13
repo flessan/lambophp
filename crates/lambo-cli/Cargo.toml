@@ -1,0 +1,23 @@
+[package]
+name = "lambo-cli"
+description = "Command-line interface of Lambo PHP (the `lambo` binary). Thin shell over lambo-core; contains no business logic."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+default-run = "lambo"
+
+[[bin]]
+name = "lambo"
+path = "src/main.rs"
+
+[dependencies]
+lambo-core.workspace = true
+clap.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
