@@ -100,7 +100,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "lambo-cli"
-version = "0.13.0-rc.1"
+version = "0.14.0-rc.1"
 dependencies = [
  "clap",
  "lambo-core",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "lambo-core"
-version = "0.13.0-rc.1"
+version = "0.14.0-rc.1"
 dependencies = [
  "crc32fast",
  "flate2",
@@ -122,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "lambo-gui"
-version = "0.13.0-rc.1"
+version = "0.14.0-rc.1"
 dependencies = [
  "lambo-core",
  "windows-sys",

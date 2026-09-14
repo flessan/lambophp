@@ -819,7 +819,7 @@ mod tests {
             config: PathBuf::from("/home/dev/.lambo/config"),
             logs: PathBuf::from("/home/dev/.lambo/logs"),
             license: "Apache-2.0 OR MIT",
-            repository: "https://github.com/flessan/kink-php-dev",
+            repository: "https://github.com/flessan/lambophp",
         };
         let lines = render_about(&about);
 

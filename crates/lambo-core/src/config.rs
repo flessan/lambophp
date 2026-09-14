@@ -30,7 +30,7 @@ use crate::yaml;
 /// Header written above the serialized YAML body.
 const HEADER: &str = "\
 # Lambo PHP global configuration
-# Reference: https://github.com/flessan/kink-php-dev/blob/main/docs/configuration.md
+# Reference: https://github.com/flessan/lambophp/blob/main/docs/configuration.md
 # Managed by `lambo config` - manual edits are welcome; invalid files are
 # rejected with an explanation on the next run.
 ";

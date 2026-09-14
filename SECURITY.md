@@ -9,7 +9,7 @@ We treat that responsibility seriously.
 **Do not open a public issue.** Report privately via GitHub Security
 Advisories:
 
-<https://github.com/flessan/kink-php-dev/security/advisories/new>
+<https://github.com/flessan/lambophp/security/advisories/new>
 
 You will receive an acknowledgment within 72 hours. We aim to ship fixes for
 confirmed vulnerabilities within 14 days and will credit reporters (unless

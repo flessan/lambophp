@@ -15,8 +15,8 @@ cargo --version
 ## Getting started
 
 ```bash
-git clone https://github.com/flessan/kink-php-dev.git
-cd kink-php-dev
+git clone https://github.com/flessan/lambophp.git
+cd lambophp
 
 cargo test --workspace --all-targets     # the whole suite
 cargo run -p lambo-cli -- --help         # the CLI

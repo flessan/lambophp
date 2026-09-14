@@ -1,6 +1,6 @@
 # Windows
 
-> **This is a Release Candidate (`0.13.0-rc.1`).**
+> **This is a Release Candidate (`0.14.0-rc.1`).**
 >
 > **Physical Windows validation is still required.** Nothing on this page has
 > been executed on a real Windows machine: the agent that produced this build

@@ -43,4 +43,4 @@ Rules that keep the page honest and fast:
 on every push to `main` that touches `web/`. Enable it once:
 *Settings → Pages → Build and deployment → GitHub Actions*.
 
-The canonical URL is <https://flessan.github.io/kink-php-dev/>.
+The canonical URL is <https://flessan.github.io/lambophp/>.

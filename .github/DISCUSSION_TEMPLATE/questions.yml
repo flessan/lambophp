@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Ask away. Check the [FAQ](https://github.com/flessan/kink-php-dev/blob/main/docs/faq.md) first.
+        Ask away. Check the [FAQ](https://github.com/flessan/lambophp/blob/main/docs/faq.md) first.
 
   - type: textarea
     id: question

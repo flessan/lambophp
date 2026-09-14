@@ -24,27 +24,27 @@ lambo up        # PHP + Apache + MariaDB, verified before it claims success
 lambo down      # stop everything Lambo started, and nothing else
 ```
 
-[![CI](https://github.com/flessan/kink-php-dev/actions/workflows/ci.yml/badge.svg)](https://github.com/flessan/kink-php-dev/actions/workflows/ci.yml)
-[![Release](https://github.com/flessan/kink-php-dev/actions/workflows/release.yml/badge.svg)](https://github.com/flessan/kink-php-dev/actions/workflows/release.yml)
+[![CI](https://github.com/flessan/lambophp/actions/workflows/ci.yml/badge.svg)](https://github.com/flessan/lambophp/actions/workflows/ci.yml)
+[![Release](https://github.com/flessan/lambophp/actions/workflows/release.yml/badge.svg)](https://github.com/flessan/lambophp/actions/workflows/release.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 📖 **[Docs](docs/)** · 🪟 **[Windows guide](docs/windows.md)** ·
 🗺️ **[Roadmap](docs/roadmap.md)** ·
-💬 **[Discussions](https://github.com/flessan/kink-php-dev/discussions)**
+💬 **[Discussions](https://github.com/flessan/lambophp/discussions)**
 
 ---
 
 ## Install
 
 **Windows 10/11** - download `LamboPHP-Setup.exe` from the
-[latest release](https://github.com/flessan/kink-php-dev/releases), or use the
+[latest release](https://github.com/flessan/lambophp/releases), or use the
 portable `LamboPHP-windows-amd64.zip` and put `lambo.exe` anywhere you like.
 No administrator rights are needed.
 
 **Linux / macOS**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh
 ```
 
 Everything Lambo owns lives under one directory - `%USERPROFILE%\Lambo` on

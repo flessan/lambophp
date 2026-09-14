@@ -8,7 +8,7 @@ rights.
 ### Installer
 
 1. Download `LamboPHP-Setup.exe` from the
-   [latest release](https://github.com/flessan/kink-php-dev/releases).
+   [latest release](https://github.com/flessan/lambophp/releases).
 2. Verify it against `SHA256SUMS` in the same release:
 
    ```powershell
@@ -55,7 +55,7 @@ Details and the manual checks CI cannot perform:
 ## Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh
 ```
 
 The script resolves `linux-amd64` or `linux-arm64`, verifies the download
@@ -80,8 +80,8 @@ xattr -d com.apple.quarantine ~/.local/bin/lambo
 ## From source
 
 ```bash
-git clone https://github.com/flessan/kink-php-dev.git
-cd kink-php-dev
+git clone https://github.com/flessan/lambophp.git
+cd lambophp
 cargo build --release
 ./target/release/lambo --version
 ```

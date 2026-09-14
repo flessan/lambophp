@@ -1,197 +1,2365 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lambo PHP - A Native Local PHP Development Environment</title>
-  <meta name="description" content="One binary that installs and runs PHP, Apache and MariaDB for your projects - no Docker, no hand-edited httpd.conf or php.ini, no changes to your PATH. Windows first, Linux and macOS too. Rust-powered, open source." />
-  <meta property="og:title" content="Lambo PHP - A Native Local PHP Development Environment" />
-  <meta property="og:description" content="lambo init, lambo up, http://localhost:8080. PHP, Apache and MariaDB managed for you - written in Rust." />
-  <meta property="og:type" content="website" />
-  <meta name="theme-color" content="#0b0e13" />
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css" />
-  <script src="main.js" defer></script>
-</head>
-<body>
+<html lang="en" data-theme="dark">
 
-  <!-- ======================= NAV ======================= -->
-  <header class="nav">
-    <div class="wrap nav__inner">
-      <a class="nav__brand" href="#top" aria-label="Lambo PHP home">
-        <img src="favicon.svg" alt="" width="26" height="26" />
-        <span>Lambo PHP</span>
-      </a>
-      <nav class="nav__links" aria-label="Sections">
-        <a href="#demo">Demo</a>
-        <a href="#features">Features</a>
-        <a href="#compare">Compare</a>
-        <a href="#roadmap">Roadmap</a>
-        <a href="https://github.com/flessan/kink-php-dev/tree/main/docs">Docs</a>
-      </nav>
-      <a class="nav__gh" href="https://github.com/flessan/kink-php-dev" aria-label="GitHub repository">
-        <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-      </a>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+  <title>Lambo PHP - Native Local PHP Development Environment (Apache + MariaDB, No Docker)</title>
+  <meta name="description"
+    content="Lambo PHP is a single Rust binary that installs and runs PHP, Apache and MariaDB locally. No Docker, no sudo, no PATH changes. Windows, Linux and macOS. Open source, MIT.">
+  <meta name="keywords"
+    content="PHP development environment, local PHP server, Apache MariaDB, no Docker PHP, Laravel local dev, WordPress local dev, Symfony local dev, Rust CLI PHP, PHP version manager, XAMPP alternative, Laragon alternative, Herd alternative">
+  <meta name="author" content="Lambo PHP contributors">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="googlebot" content="index, follow">
+  <meta name="theme-color" content="#0a0414">
+  <meta name="color-scheme" content="dark light">
+  <meta name="application-name" content="Lambo PHP">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="canonical" href="https://lambophp.dev/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Lambo PHP">
+  <meta property="og:title" content="Lambo PHP - Native Local PHP Development Environment">
+  <meta property="og:description"
+    content="One binary. Zero Docker. Zero sudo. PHP, Apache and MariaDB on port 8080 in under 50ms cold start.">
+  <meta property="og:url" content="https://lambophp.dev/">
+  <meta property="og:image" content="https://lambophp.dev/og-cover.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Lambo PHP - Native local PHP development environment">
+  <meta property="og:locale" content="en_US">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lambo PHP - Native Local PHP Development Environment">
+  <meta name="twitter:description" content="One binary. Zero Docker. Zero sudo. PHP, Apache and MariaDB on port 8080.">
+  <meta name="twitter:image" content="https://lambophp.dev/og-cover.png">
+  <meta name="twitter:image:alt" content="Lambo PHP cover">
+  <meta name="twitter:creator" content="@flessan">
+
+  <link rel="preconnect" href="https://raw.githubusercontent.com">
+  <link rel="dns-prefetch" href="https://github.com">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="application/rss+xml" title="Lambo PHP Changelog" href="/feed.xml">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Lambo PHP",
+    "operatingSystem": "Windows, Linux, macOS",
+    "applicationCategory": "DeveloperApplication",
+    "applicationSubCategory": "Local Development Environment",
+    "programmingLanguage": "Rust",
+    "softwareVersion": "0.1.0",
+    "license": "https://opensource.org/licenses/MIT",
+    "downloadUrl": "https://github.com/flessan/lambophp",
+    "installUrl": "https://github.com/flessan/lambophp/releases",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5", "ratingCount": "1" },
+    "featureList": [
+      "One-command project bootstrap",
+      "Per-project PHP versions",
+      "Native Apache + MariaDB (no Docker)",
+      "Environment as code (lambo.yml)",
+      "Built-in diagnostics (lambo doctor)",
+      "Workspaces for grouping projects",
+      "No sudo required"
+    ],
+    "description": "Native local PHP development environment. One Rust binary installs and runs PHP, Apache and MariaDB. No Docker, no sudo, no PATH changes."
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://lambophp.dev/" },
+      { "@type": "ListItem", "position": 2, "name": "Lambo PHP", "item": "https://lambophp.dev/#features" }
+    ]
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is this just a wrapper around XAMPP or Homebrew?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Lambo downloads isolated, statically-linked (or carefully scoped) native binaries directly into its own directory (~/.lambo). It does not rely on or modify your system's global package manager, ensuring zero conflicts with other tools."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does it work with WordPress, Laravel, and Symfony?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. lambo init specifically looks for wp-config.php, artisan, and composer.json to automatically configure the document root, required PHP extensions, and database settings for each framework."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I update PHP versions?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Change the version in your lambo.yml file (e.g., php: \"8.3\") and run lambo up. Lambo downloads the new version, wires it up, and gracefully restarts services without touching your old version."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Why Rust?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Rust provides memory safety, extremely fast startup times critical for CLI tools, and the ability to compile a single static binary that runs identically across Windows, macOS, and Linux without requiring users to install a runtime."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-primary: #0a0414;
+      --bg-secondary: #1a0b2e;
+      --bg-tertiary: #2d1b4e;
+      --purple-dark: #1a0b2e;
+      --purple-mid: #6d28d9;
+      --purple-light: #a855f7;
+      --purple-bright: #d946ef;
+      --purple-glow: #c084fc;
+      --text-primary: #f3e8ff;
+      --text-secondary: #c4b5fd;
+      --text-muted: #8b7fc7;
+      --border: #3d2a5e;
+      --border-light: #5b3d8a;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --mono: 'Courier New', Monaco, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      --container-max: 1280px;
+      --gutter: clamp(16px, 4vw, 32px);
+      --nav-h: 70px;
+      --radius: 0;
+      --shadow-glow: 0 0 40px rgba(168, 85, 247, 0.2);
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f6f1ff;
+      --bg-secondary: #ece2ff;
+      --bg-tertiary: #ddd0f7;
+      --purple-dark: #ece2ff;
+      --purple-mid: #7c3aed;
+      --purple-light: #9333ea;
+      --purple-bright: #c026d3;
+      --purple-glow: #a21caf;
+      --text-primary: #1a0b2e;
+      --text-secondary: #4a2d7a;
+      --text-muted: #6d5a8c;
+      --border: #c4b5fd;
+      --border-light: #a78bfa;
+      --shadow-glow: 0 0 40px rgba(168, 85, 247, 0.15);
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.65;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    img,
+    svg {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    a {
+      color: var(--purple-bright);
+    }
+
+    .container {
+      width: 100%;
+      max-width: var(--container-max);
+      margin-inline: auto;
+      padding-inline: var(--gutter);
+    }
+
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      z-index: 1000;
+      padding: 12px 20px;
+      background: var(--purple-bright);
+      color: var(--bg-primary);
+      font-weight: 700;
+      text-decoration: none;
+      border-radius: 0 0 8px 0;
+    }
+
+    .skip-link:focus {
+      left: 0;
+    }
+
+    .scroll-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      width: 0%;
+      background: linear-gradient(90deg, var(--purple-bright), var(--purple-glow));
+      z-index: 200;
+      box-shadow: 0 0 12px var(--purple-bright);
+      transition: width 0.05s linear;
+    }
+
+    .back-to-top {
+      position: fixed;
+      bottom: clamp(16px, 3vw, 24px);
+      right: clamp(16px, 3vw, 24px);
+      width: 48px;
+      height: 48px;
+      background: var(--purple-mid);
+      color: var(--text-primary);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 90;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s, background 0.2s, transform 0.2s;
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    }
+
+    .back-to-top.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .back-to-top:hover {
+      background: var(--purple-bright);
+      transform: translateY(-4px);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: clamp(16px, 3vw, 24px);
+      left: 50%;
+      transform: translateX(-50%) translateY(180%);
+      background: var(--purple-mid);
+      color: var(--text-primary);
+      padding: 12px 24px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      z-index: 300;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 5% 100%);
+      transition: transform 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: 90vw;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ---------- Navigation ---------- */
+    .nav {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 100;
+      background: rgba(10, 4, 20, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    [data-theme="light"] .nav {
+      background: rgba(246, 241, 255, 0.92);
+    }
+
+    .nav__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: var(--nav-h);
+      gap: 16px;
+      position: relative;
+    }
+
+    .nav__brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: clamp(1.05rem, 2.5vw, 1.3rem);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+      text-decoration: none;
+      transition: color 0.2s;
+      z-index: 2;
+    }
+
+    .nav__brand:hover,
+    .nav__brand:focus-visible {
+      color: var(--purple-bright);
+    }
+
+    .nav__logo {
+      color: var(--purple-bright);
+    }
+
+    .accent {
+      color: var(--purple-bright);
+    }
+
+    .nav__links {
+      display: flex;
+      align-items: center;
+      gap: clamp(16px, 3vw, 32px);
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    }
+
+    .nav__links ul {
+      display: contents;
+    }
+
+    .nav__links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+      position: relative;
+      padding: 6px 0;
+      display: inline-block;
+    }
+
+    .nav__links a::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: var(--purple-bright);
+      transition: width 0.3s;
+    }
+
+    .nav__links a:hover,
+    .nav__links a:focus-visible,
+    .nav__links a.active {
+      color: var(--purple-bright);
+      outline: none;
+    }
+
+    .nav__links a:hover::after,
+    .nav__links a:focus-visible::after,
+    .nav__links a.active::after {
+      width: 100%;
+    }
+
+    .nav__actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 2;
+    }
+
+    .nav__cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      background: var(--purple-mid);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .nav__cta:hover,
+    .nav__cta:focus-visible {
+      background: var(--purple-light);
+      outline: none;
+    }
+
+    .nav__mobile-cta {
+      display: none;
+    }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      background: transparent;
+      border: 1px solid var(--border-light);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .icon-btn:hover,
+    .icon-btn:focus-visible {
+      border-color: var(--purple-bright);
+      color: var(--purple-bright);
+      outline: none;
+    }
+
+    .icon-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .nav__toggle {
+      display: none;
+    }
+
+    @media (max-width: 1268px) {
+      .nav__toggle {
+        display: inline-flex;
+      }
+
+      .nav__cta-desktop {
+        display: none;
+      }
+
+      .nav__links {
+        position: fixed;
+        inset: var(--nav-h) 0 auto 0;
+        transform: translateY(-120%);
+        flex-direction: column;
+        gap: 0;
+        background: rgba(10, 4, 20, 0.98);
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--border);
+        padding: 8px var(--gutter) 24px;
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.3s, opacity 0.3s;
+        max-height: calc(100vh - var(--nav-h));
+        overflow-y: auto;
+        align-items: stretch;
+      }
+
+      [data-theme="light"] .nav__links {
+        background: rgba(246, 241, 255, 0.98);
+      }
+
+      .nav__links.is-open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .nav__links ul {
+        display: block;
+        width: 100%;
+      }
+
+      .nav__links li {
+        width: 100%;
+      }
+
+      .nav__links a {
+        display: block;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 1rem;
+      }
+
+      .nav__mobile-cta {
+        display: inline-flex !important;
+        margin-top: 16px;
+        justify-content: center;
+      }
+    }
+
+    /* ---------- Command palette ---------- */
+    .palette {
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      background: rgba(10, 4, 20, 0.8);
+      backdrop-filter: blur(12px);
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: clamp(40px, 10vh, 80px) 16px;
+    }
+
+    .palette.open {
+      display: flex;
+    }
+
+    .palette__panel {
+      width: 100%;
+      max-width: 640px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 2% 100%);
+      overflow: hidden;
+      box-shadow: var(--shadow-glow);
+    }
+
+    .palette__input {
+      width: 100%;
+      padding: 16px 20px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+      font-size: 1rem;
+      font-family: var(--mono);
+    }
+
+    .palette__input:focus {
+      outline: none;
+    }
+
+    .palette__list {
+      list-style: none;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .palette__item {
+      padding: 12px 20px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-secondary);
+    }
+
+    .palette__item:last-child {
+      border-bottom: none;
+    }
+
+    .palette__item:hover,
+    .palette__item.selected {
+      background: var(--purple-mid);
+      color: var(--text-primary);
+    }
+
+    .palette__item svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .palette__shortcut {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      padding: 2px 8px;
+      border: 1px solid var(--border);
+    }
+
+    .palette__empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.9rem;
+    }
+
+    .kbd {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      border: 1px solid var(--border-light);
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+      border-radius: 3px;
+    }
+
+    /* ---------- Hero ---------- */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      padding: calc(var(--nav-h) + 48px) 0 80px;
+      overflow: hidden;
+    }
+
+    .hero__bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .hex-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(30deg, var(--border) 12%, transparent 12.5%, transparent 87%, var(--border) 87.5%, var(--border)),
+        linear-gradient(150deg, var(--border) 12%, transparent 12.5%, transparent 87%, var(--border) 87.5%, var(--border)),
+        linear-gradient(30deg, var(--border) 12%, transparent 12.5%, transparent 87%, var(--border) 87.5%, var(--border)),
+        linear-gradient(150deg, var(--border) 12%, transparent 12.5%, transparent 87%, var(--border) 87.5%, var(--border)),
+        linear-gradient(60deg, rgba(168, 85, 247, 0.1) 25%, transparent 25.5%, transparent 75%, rgba(168, 85, 247, 0.1) 75%, rgba(168, 85, 247, 0.1)),
+        linear-gradient(60deg, rgba(168, 85, 247, 0.1) 25%, transparent 25.5%, transparent 75%, rgba(168, 85, 247, 0.1) 75%, rgba(168, 85, 247, 0.1));
+      background-size: 80px 140px;
+      background-position: 0 0, 0 0, 40px 70px, 40px 70px, 0 0, 40px 70px;
+      opacity: 0.3;
+    }
+
+    .speed-lines {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(90deg, transparent, transparent 100px, rgba(168, 85, 247, 0.05) 100px, rgba(168, 85, 247, 0.05) 102px);
+      animation: speedMove 20s linear infinite;
+    }
+
+    @keyframes speedMove {
+      0% {
+        transform: translateX(0)
+      }
+
+      100% {
+        transform: translateX(-100px)
+      }
+    }
+
+    .hero__content {
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1.1fr;
+      gap: clamp(32px, 5vw, 48px);
+      align-items: center;
+    }
+
+    .hero__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(168, 85, 247, 0.1);
+      border: 1px solid var(--purple-light);
+      font-size: clamp(0.7rem, 1.8vw, 0.8rem);
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--purple-glow);
+      margin-bottom: 24px;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+    }
+
+    .badge__dot {
+      width: 8px;
+      height: 8px;
+      background: var(--purple-bright);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0.5
+      }
+    }
+
+    .hero__title {
+      font-size: clamp(2rem, 5.5vw, 4rem);
+      font-weight: 900;
+      line-height: 1.08;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+    }
+
+    .title-line {
+      display: block;
+    }
+
+    .title-line.accent {
+      color: var(--purple-bright);
+      text-shadow: 0 0 30px rgba(217, 70, 239, 0.5);
+    }
+
+    .hero__desc {
+      font-size: clamp(1rem, 2.2vw, 1.15rem);
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      line-height: 1.7;
+    }
+
+    .hero__desc code,
+    .install__cmd,
+    .feature-card__code {
+      background: var(--bg-secondary);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      color: var(--purple-glow);
+      font-size: 0.95em;
+      word-break: break-word;
+    }
+
+    .hero__install {
+      display: flex;
+      align-items: stretch;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      margin-bottom: 32px;
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
+    }
+
+    .install__cmd {
+      flex: 1;
+      padding: 16px 20px;
+      font-family: var(--mono);
+      font-size: clamp(0.7rem, 2.2vw, 0.85rem);
+      color: var(--text-primary);
+      overflow-x: auto;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      background: var(--bg-secondary);
+      border: none;
+      border-radius: 0;
+    }
+
+    .install__copy {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 50px;
+      width: 50px;
+      background: var(--purple-mid);
+      border: none;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .install__copy:hover,
+    .install__copy:focus-visible {
+      background: var(--purple-light);
+      outline: none;
+    }
+
+    .install__copy .icon-check {
+      display: none;
+    }
+
+    .install__copy.copied .icon-check {
+      display: block;
+    }
+
+    .install__copy.copied .icon-copy {
+      display: none;
+    }
+
+    .hero__actions {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      transition: transform 0.2s, background 0.2s, border-color 0.2s;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+      min-height: 48px;
+      cursor: pointer;
+      border: none;
+      font-family: var(--sans);
+    }
+
+    .btn--primary {
+      background: var(--purple-bright);
+      color: var(--bg-primary);
+    }
+
+    .btn--primary:hover,
+    .btn--primary:focus-visible {
+      background: var(--purple-glow);
+      transform: translateY(-2px);
+      outline: none;
+    }
+
+    .btn--secondary {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn--secondary:hover,
+    .btn--secondary:focus-visible {
+      background: var(--bg-tertiary);
+      border-color: var(--purple-light);
+      outline: none;
+    }
+
+    .hero__visual {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 300px;
+    }
+
+    .hero__car {
+      max-width: 100%;
+      max-height: 480px;
+      width: auto;
+      height: auto;
+      filter: drop-shadow(0 0 40px rgba(168, 85, 247, 0.3));
+      animation: float 6s ease-in-out infinite;
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0)
+      }
+
+      50% {
+        transform: translateY(-20px)
+      }
+    }
+
+    .hero__stats {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: clamp(16px, 3vw, 24px);
+      margin-top: 64px;
+      padding: clamp(24px, 4vw, 40px);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 2% 100%);
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat__value {
+      font-size: clamp(1.5rem, 4vw, 2.5rem);
+      font-weight: 900;
+      color: var(--purple-bright);
+      line-height: 1;
+      margin-bottom: 8px;
+      display: inline-block;
+    }
+
+    .stat__label {
+      font-size: clamp(0.7rem, 2vw, 0.85rem);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    /* ---------- Section Headers ---------- */
+    .section__header {
+      text-align: center;
+      margin-bottom: clamp(40px, 6vw, 60px);
+    }
+
+    .section__title {
+      font-size: clamp(1.75rem, 5vw, 3rem);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, var(--purple-bright), var(--purple-glow));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+    }
+
+    .section__desc {
+      font-size: clamp(1rem, 2.2vw, 1.1rem);
+      color: var(--text-secondary);
+      max-width: 640px;
+      margin-inline: auto;
+    }
+
+    /* ---------- Features ---------- */
+    .features {
+      padding: clamp(64px, 12vw, 120px) 0;
+      background: var(--bg-secondary);
+      position: relative;
+    }
+
+    .features::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--purple-bright), transparent);
+    }
+
+    .features__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      padding: clamp(24px, 4vw, 32px);
+      transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+      position: relative;
+    }
+
+    .feature-card:hover,
+    .feature-card:focus-within {
+      border-color: var(--purple-light);
+      transform: translateY(-4px);
+      box-shadow: 0 10px 40px rgba(168, 85, 247, 0.2);
+    }
+
+    .feature-card__icon {
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(168, 85, 247, 0.1);
+      color: var(--purple-bright);
+      margin-bottom: 20px;
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    }
+
+    .feature-card__title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .feature-card__desc {
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      line-height: 1.7;
+    }
+
+    .feature-card__desc code {
+      background: var(--bg-secondary);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--mono);
+      color: var(--purple-glow);
+      font-size: 0.9em;
+    }
+
+    .feature-card__code {
+      display: inline-block;
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+      word-break: break-word;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      user-select: all;
+    }
+
+    .feature-card__code:hover {
+      border-color: var(--purple-bright);
+      color: var(--purple-bright);
+    }
+
+    .feature-card__copy-hint {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      font-size: 0.7rem;
+      color: var(--purple-bright);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      font-family: var(--mono);
+    }
+
+    .feature-card__code.copied~.feature-card__copy-hint,
+    .feature-card.copied-active .feature-card__copy-hint {
+      opacity: 1;
+    }
+
+    /* ---------- Demo / Terminal ---------- */
+    .demo {
+      padding: clamp(64px, 12vw, 120px) 0;
+      background: var(--bg-primary);
+    }
+
+    .terminal {
+      max-width: 900px;
+      margin-inline: auto;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 2% 100%);
+    }
+
+    .terminal__header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .terminal__dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot--red {
+      background: #ef4444;
+    }
+
+    .dot--yellow {
+      background: #f59e0b;
+    }
+
+    .dot--green {
+      background: #10b981;
+    }
+
+    .terminal__title {
+      flex: 1;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .terminal__controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+
+    .terminal__speed {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .terminal__speed button {
+      padding: 4px 10px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .terminal__speed button:hover {
+      color: var(--text-primary);
+    }
+
+    .terminal__speed button.active {
+      background: var(--purple-mid);
+      color: var(--text-primary);
+    }
+
+    .terminal__btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+      min-height: 32px;
+    }
+
+    .terminal__btn:hover,
+    .terminal__btn:focus-visible {
+      border-color: var(--purple-light);
+      color: var(--purple-bright);
+      outline: none;
+    }
+
+    .terminal__body {
+      padding: clamp(16px, 3vw, 24px);
+      font-family: var(--mono);
+      font-size: clamp(0.75rem, 1.8vw, 0.9rem);
+      line-height: 1.8;
+      min-height: 360px;
+      max-height: 480px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .demo__note {
+      text-align: center;
+      margin-top: 32px;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      padding-inline: var(--gutter);
+    }
+
+    .demo__note a {
+      color: var(--purple-bright);
+      text-decoration: none;
+    }
+
+    .demo__note a:hover {
+      text-decoration: underline;
+    }
+
+    .t-cmd {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .t-cmd::before {
+      content: "$ ";
+      color: var(--success);
+    }
+
+    .t-ok {
+      color: var(--success);
+    }
+
+    .t-warn {
+      color: var(--warning);
+    }
+
+    .t-fail {
+      color: var(--error);
+    }
+
+    .t-head {
+      color: var(--purple-bright);
+      font-weight: 700;
+    }
+
+    .t-dim {
+      color: var(--text-muted);
+    }
+
+    /* ---------- Compare ---------- */
+    .compare {
+      padding: clamp(64px, 12vw, 120px) 0;
+      background: var(--bg-secondary);
+    }
+
+    .compare__view-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .compare__view-btn {
+      padding: 8px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 5% 100%);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .compare__view-btn.active {
+      background: var(--purple-mid);
+      color: var(--text-primary);
+      border-color: var(--purple-light);
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      margin-bottom: 24px;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--border);
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: clamp(0.8rem, 1.8vw, 0.95rem);
+      min-width: 640px;
+    }
+
+    .compare-table th,
+    .compare-table td {
+      padding: clamp(10px, 2vw, 16px) clamp(10px, 2vw, 20px);
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .compare-table thead th {
+      background: var(--bg-tertiary);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.85rem;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .compare-table thead th:first-child,
+    .compare-table tbody th {
+      text-align: left;
+    }
+
+    .compare-table tbody th {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .compare-table .highlight {
+      background: rgba(168, 85, 247, 0.1);
+      color: var(--purple-bright);
+      font-weight: 700;
+    }
+
+    .compare-table .yes {
+      color: var(--success);
+      font-weight: 700;
+    }
+
+    .compare-table .no {
+      color: var(--text-muted);
+    }
+
+    .compare-table .partial {
+      color: var(--warning);
+      font-size: 0.85rem;
+    }
+
+    .compare__note {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      padding-inline: var(--gutter);
+    }
+
+    .compare-cards {
+      display: none;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    }
+
+    .compare-cards.active {
+      display: grid;
+    }
+
+    .compare-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      padding: 16px;
+    }
+
+    .compare-card h3 {
+      color: var(--purple-bright);
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .compare-card.is-lambo {
+      border-color: var(--purple-bright);
+      background: rgba(168, 85, 247, 0.05);
+    }
+
+    .compare-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      font-size: 0.9rem;
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .compare-row:last-child {
+      border-bottom: none;
+    }
+
+    .compare-row span:first-child {
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    .compare-row .yes {
+      color: var(--success);
+    }
+
+    .compare-row .no {
+      color: var(--text-muted);
+    }
+
+    .compare-row .partial {
+      color: var(--warning);
+    }
+
+    /* ---------- Roadmap ---------- */
+    .roadmap {
+      padding: clamp(64px, 12vw, 120px) 0;
+      background: var(--bg-primary);
+    }
+
+    .roadmap__timeline {
+      max-width: 800px;
+      margin-inline: auto;
+    }
+
+    .roadmap__item {
+      display: flex;
+      gap: clamp(16px, 4vw, 24px);
+      padding: 32px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .roadmap__item:last-child {
+      border-bottom: none;
+    }
+
+    .roadmap__marker {
+      flex-shrink: 0;
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-secondary);
+      border: 2px solid var(--border);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    }
+
+    .roadmap__item--done .roadmap__marker {
+      background: var(--success);
+      border-color: var(--success);
+      color: var(--bg-primary);
+    }
+
+    .roadmap__item--current .roadmap__marker {
+      background: var(--purple-bright);
+      border-color: var(--purple-bright);
+      color: var(--bg-primary);
+    }
+
+    .roadmap__content {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .roadmap__title {
+      font-size: clamp(1.1rem, 3vw, 1.3rem);
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      padding: 4px 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .tag--done {
+      background: var(--success);
+      border-color: var(--success);
+      color: var(--bg-primary);
+    }
+
+    .tag--current {
+      background: var(--purple-bright);
+      border-color: var(--purple-bright);
+      color: var(--bg-primary);
+    }
+
+    .roadmap__desc {
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .roadmap__desc code {
+      background: var(--bg-secondary);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--mono);
+      color: var(--purple-glow);
+      font-size: 0.9em;
+      word-break: break-word;
+    }
+
+    .roadmap__cta {
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    .roadmap__cta a {
+      color: var(--purple-bright);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .roadmap__cta a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---------- FAQ ---------- */
+    .faq {
+      padding: clamp(64px, 12vw, 120px) 0;
+      background: var(--bg-secondary);
+    }
+
+    .faq__search {
+      max-width: 800px;
+      margin: 0 auto 24px;
+      position: relative;
+    }
+
+    .faq__search input {
+      width: 100%;
+      padding: 14px 20px 14px 48px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      font-size: 1rem;
+      font-family: var(--sans);
+      transition: border-color 0.2s;
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 2% 100%);
+    }
+
+    .faq__search input:focus {
+      outline: none;
+      border-color: var(--purple-bright);
+    }
+
+    .faq__search input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .faq__search-icon {
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .faq__list {
+      max-width: 800px;
+      margin-inline: auto;
+    }
+
+    .faq__item {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .faq__item[open] {
+      border-color: var(--purple-light);
+    }
+
+    .faq__item.hidden {
+      display: none;
+    }
+
+    .faq__question {
+      padding: 20px 24px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      transition: color 0.2s;
+    }
+
+    .faq__question:hover {
+      color: var(--purple-bright);
+    }
+
+    .faq__question::-webkit-details-marker {
+      display: none;
+    }
+
+    .faq__question:focus-visible {
+      outline: 2px solid var(--purple-bright);
+      outline-offset: -2px;
+      color: var(--purple-bright);
+    }
+
+    .faq__icon {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      background: var(--purple-mid);
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      transition: transform 0.3s, background 0.3s;
+    }
+
+    .faq__item[open] .faq__icon {
+      transform: rotate(45deg);
+      background: var(--purple-bright);
+    }
+
+    .faq__answer {
+      padding: 0 24px 20px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .faq__answer code {
+      background: var(--bg-secondary);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--mono);
+      color: var(--purple-glow);
+      font-size: 0.9em;
+      word-break: break-word;
+    }
+
+    .faq__empty {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 32px;
+      font-family: var(--mono);
+      display: none;
+    }
+
+    .faq__empty.show {
+      display: block;
+    }
+
+    /* ---------- Install ---------- */
+    .install-section {
+      padding: clamp(64px, 12vw, 120px) 0;
+      background: var(--bg-primary);
+    }
+
+    .os-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .os-tab {
+      padding: 10px 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      transition: all 0.2s;
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 5% 100%);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .os-tab:hover {
+      border-color: var(--purple-light);
+      color: var(--text-primary);
+    }
+
+    .os-tab.active {
+      background: var(--purple-bright);
+      color: var(--bg-primary);
+      border-color: var(--purple-bright);
+    }
+
+    .install__block {
+      display: flex;
+      max-width: 800px;
+      margin-inline: auto;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 2% 100%);
+    }
+
+    .install__alternatives {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+      gap: 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .install__alt {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      padding: 24px;
+    }
+
+    .install__alt h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--purple-bright);
+    }
+
+    .install__alt p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .install__alt code {
+      background: var(--bg-primary);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--mono);
+      color: var(--purple-glow);
+      font-size: 0.85em;
+      word-break: break-all;
+    }
+
+    /* ---------- Footer ---------- */
+    .footer {
+      padding: 60px 0 40px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+    }
+
+    .footer__inner {
+      text-align: center;
+    }
+
+    .footer__brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      font-size: 1.2rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      flex-wrap: wrap;
+    }
+
+    .footer__tagline {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 400;
+      text-transform: none;
+    }
+
+    .footer__links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 24px;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .footer__links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+      padding: 6px;
+    }
+
+    .footer__links a:hover,
+    .footer__links a:focus-visible {
+      color: var(--purple-bright);
+      outline: none;
+    }
+
+    .footer__copy {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 968px) {
+      .hero__content {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .hero__visual {
+        order: -1;
+        max-width: 560px;
+        margin-inline: auto;
+      }
+
+      .hero__stats {
+        grid-template-columns: repeat(2, 1fr);
+        margin-top: 48px;
+      }
+
+      .nav__actions {
+        gap: 6px;
+      }
+
+      .icon-btn {
+        width: 40px;
+        height: 40px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero__install {
+        flex-direction: column;
+      }
+
+      .install__copy {
+        width: 100%;
+        min-height: 44px;
+        padding: 12px;
+      }
+
+      .install__cmd {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .install__block {
+        flex-direction: column;
+      }
+
+      .footer__links {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .hero__actions .btn {
+        flex: 1 1 auto;
+        justify-content: center;
+      }
+
+      .terminal__header {
+        gap: 8px;
+      }
+
+      .terminal__title {
+        font-size: 0.75rem;
+      }
+
+      .terminal__controls {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero__stats {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 20px;
+      }
+
+      .stat__value {
+        font-size: 1.5rem;
+      }
+
+      .roadmap__item {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .roadmap__marker {
+        width: 48px;
+        height: 48px;
+        font-size: 1rem;
+      }
+
+      .faq__question {
+        padding: 16px;
+        font-size: 0.95rem;
+      }
+
+      .faq__answer {
+        padding: 0 16px 16px;
+      }
+
+      .os-tab {
+        padding: 8px 14px;
+        font-size: 0.75rem;
+      }
+
+      .back-to-top {
+        width: 44px;
+        height: 44px;
+      }
+    }
+
+    /* ---------- Animations ---------- */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero__text>* {
+      animation: fadeInUp 0.8s ease-out backwards;
+    }
+
+    .hero__badge {
+      animation-delay: 0.1s;
+    }
+
+    .hero__title {
+      animation-delay: 0.2s;
+    }
+
+    .hero__desc {
+      animation-delay: 0.3s;
+    }
+
+    .hero__install {
+      animation-delay: 0.4s;
+    }
+
+    .hero__actions {
+      animation-delay: 0.5s;
+    }
+
+    .hero__stats {
+      animation-delay: 0.6s;
+    }
+
+    /* ---------- Print ---------- */
+    @media print {
+
+      .nav,
+      .hero__bg,
+      .terminal__btn,
+      .terminal__speed,
+      .install__copy,
+      .nav__toggle,
+      .scroll-progress,
+      .back-to-top,
+      .theme-toggle,
+      .palette,
+      .compare__view-toggle,
+      .os-tabs {
+        display: none !important;
+      }
+
+      body {
+        background: #fff;
+        color: #000;
+      }
+
+      .hero,
+      .features,
+      .demo,
+      .compare,
+      .roadmap,
+      .faq,
+      .install-section,
+      .footer {
+        background: #fff;
+        color: #000;
+      }
+
+      .section__title {
+        -webkit-text-fill-color: #000;
+        color: #000;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
+
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <button class="back-to-top" id="back-to-top" aria-label="Back to top">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+      stroke-linejoin="round" aria-hidden="true">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  </button>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="palette__panel">
+      <input type="text" class="palette__input" id="palette-input"
+        placeholder="Jump to section or search commands... (Esc to close)" aria-label="Search commands and sections">
+      <ul class="palette__list" id="palette-list" role="listbox"></ul>
+    </div>
+  </div>
+
+  <header class="nav" role="banner">
+    <div class="container">
+      <div class="nav__inner">
+        <a class="nav__brand" href="#top" aria-label="Lambo PHP home">
+          <img src="./gajahphp.png" class="nav__logo" style="width: 72px;" alt="">
+          <span>LAMBO<span class="accent">PHP</span></span>
+        </a>
+        <nav class="nav__links" id="nav-links" aria-label="Primary navigation">
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#demo">Demo</a></li>
+            <li><a href="#compare">Compare</a></li>
+            <li><a href="#roadmap">Roadmap</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#install">Install</a></li>
+          </ul>
+          <a class="nav__cta nav__mobile-cta" href="https://github.com/flessan/lambophp" rel="noopener"
+            style="padding: 7px;">
+            <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
+              <path fill="currentColor"
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+          </a>
+        </nav>
+        <div class="nav__actions">
+          <button class="icon-btn" id="palette-btn" aria-label="Open command palette" title="Command palette (Ctrl+K)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+            <svg class="theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+            <svg class="theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" style="display:none" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </button>
+          <a class="nav__cta nav__cta-desktop" href="https://github.com/flessan/lambophp" rel="noopener"
+            aria-label="View Lambo PHP on GitHub">
+            <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
+              <path fill="currentColor"
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+            GitHub
+          </a>
+          <button class="icon-btn nav__toggle" id="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false"
+            aria-controls="nav-links">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              aria-hidden="true">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
-  <main id="top">
+  <main id="main">
+    <span id="top"></span>
 
-    <!-- ======================= HERO ======================= -->
-    <section class="hero">
-      <div class="wrap">
-        <p class="hero__kicker reveal">Written in Rust · MIT OR Apache-2.0</p>
-        <h1 class="hero__title reveal">
-          A native local <span class="grad">PHP development</span> environment.
-        </h1>
-        <p class="hero__sub reveal">
-          <code>lambo init</code> works out what your project is and
-          <code>lambo up</code> gives it PHP, Apache and MariaDB. No Docker.
-          No <code>httpd.conf</code> or <code>php.ini</code> to edit. No changes
-          to your <code>PATH</code>, and no sudo.
-        </p>
-
-        <div class="install reveal" id="install-hero">
-          <code class="install__cmd" id="install-cmd">curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh</code>
-          <button class="install__copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh" aria-label="Copy install command">
-            <svg class="icon-copy" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h10v12H9z"/><path fill="none" stroke="currentColor" stroke-width="2" d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
-            <svg class="icon-check" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M4 12.5 9.5 18 20 6"/></svg>
-          </button>
-          <span class="visually-hidden" aria-live="polite" data-copy-status></span>
-        </div>
-
-        <div class="hero__actions reveal">
-          <a class="btn btn--primary" href="#demo">Watch it work</a>
-          <a class="btn" href="https://github.com/flessan/kink-php-dev">Star on GitHub</a>
-        </div>
-
-        <ul class="hero__chips reveal" role="list">
-          <li>Windows 10/11 first</li>
-          <li>Linux · macOS</li>
-          <li>Port 8080 · no admin rights</li>
-        </ul>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero__bg" aria-hidden="true">
+        <div class="hex-grid"></div>
+        <div class="speed-lines"></div>
       </div>
-    </section>
-
-    <!-- ======================= DEMO ======================= -->
-    <section class="section" id="demo">
-      <div class="wrap">
-        <h2 class="section__title reveal">See <span class="grad">lambo</span> work</h2>
-        <p class="section__sub reveal">
-          Real output, copied from a terminal - including the last command
-          failing. Nothing staged, nothing edited.
-        </p>
-
-        <div class="term reveal" role="img" aria-label="Terminal demo: lambo init detects a plain PHP project and writes lambo.yml, lambo doctor reports what is missing, lambo up refuses to run a download it cannot verify">
-          <div class="term__bar">
-            <span class="term__dot term__dot--r"></span>
-            <span class="term__dot term__dot--y"></span>
-            <span class="term__dot term__dot--g"></span>
-            <span class="term__title">~/code/shop - lambo</span>
-            <button class="term__replay" id="term-replay" type="button">
-              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 3.2-6.9M3 4v5h5"/></svg>
-              replay
-            </button>
+      <div class="container">
+        <div class="hero__content">
+          <div class="hero__text">
+            <p class="hero__badge" role="status">
+              <span class="badge__dot" aria-hidden="true"></span>
+              WRITTEN IN RUST · MIT LICENSE · OPEN SOURCE
+            </p>
+            <h1 class="hero__title" id="hero-title">
+              <span class="title-line">NATIVE LOCAL</span>
+              <span class="title-line accent">PHP DEVELOPMENT</span>
+              <span class="title-line">ENVIRONMENT</span>
+            </h1>
+            <p class="hero__desc">
+              One binary. Zero Docker. Zero sudo. <code>lambo init</code> detects your project,
+              <code>lambo up</code> gives you PHP, Apache, and MariaDB on port 8080.
+            </p>
+            <div class="hero__install">
+              <code class="install__cmd"
+                id="install-cmd">curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh</code>
+              <button class="install__copy" type="button"
+                data-copy="curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh"
+                aria-label="Copy install command to clipboard">
+                <svg class="icon-copy" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h10v12H9z" />
+                  <path fill="none" stroke="currentColor" stroke-width="2"
+                    d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+                </svg>
+                <svg class="icon-check" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                    stroke-linejoin="round" d="M4 12.5 9.5 18 20 6" />
+                </svg>
+              </button>
+            </div>
+            <div class="hero__actions">
+              <a class="btn btn--primary" href="#demo">
+                <span>Watch Demo</span>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
+                </svg>
+              </a>
+              <a class="btn btn--secondary" href="https://github.com/flessan/lambophp" rel="noopener">
+                <span>Star on GitHub</span>
+              </a>
+            </div>
           </div>
-          <div class="term__body" id="term-body" aria-hidden="true"></div>
-          <noscript>
-            <pre class="term__body">$ lambo init
-✔ created `/home/dev/shop/lambo.yml`
-── Detected
-  framework      plain PHP
-  · [no ] composer.json
-  · [no ] artisan (Laravel's console entry point)
-  · [yes] index.php
-── Configuration
-  php            stable
-  server         apache
-  document root  .
-  database       disabled
-
-$ lambo doctor
-── Diagnostics
-✔ lambo home: /home/dev/.lambo
-✔ catalogue: 2 PHP, 0 Apache and 1 MariaDB releases for linux-x64
-✖ php: no PHP version is installed
-  hint: lambo php install stable
-✔ ports: server.port: 8080 is free
-✔ project: shop: plain PHP served from /home/dev/shop
-
-$ lambo up --no-browser
-── Starting shop
-error: PHP stable failed to start: download failed: … no checksum is
-available for this download, so it cannot be verified.
-  next: lambo php install stable, or `lambo init --php &lt;version&gt;`</pre>
-          </noscript>
+          <div class="hero__visual">
+            <img src="./lambo_lu_warna_apa_bos.png" alt="Lambo PHP mascot" class="hero__car" draggable="false" />
+          </div>
         </div>
-        <p class="term__note reveal">That last failure is deliberate and it is the point: the catalogue ships with no pinned checksums, so Lambo refuses to run a download it cannot verify. <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/installation.md#pinning-checksums">Pin one and it runs ↗</a></p>
+        <dl class="hero__stats" aria-label="Project statistics">
+          <div class="stat">
+            <dt class="stat__value" data-count="50" data-suffix="ms" data-prefix="&lt;">&lt;50ms</dt>
+            <dd class="stat__label">Cold Start</dd>
+          </div>
+          <div class="stat">
+            <dt class="stat__value" data-count="8" data-suffix="MB" data-prefix="&lt;">&lt;8MB</dt>
+            <dd class="stat__label">Binary Size</dd>
+          </div>
+          <div class="stat">
+            <dt class="stat__value" data-count="318" data-suffix="">318</dt>
+            <dd class="stat__label">Tests Passing</dd>
+          </div>
+          <div class="stat">
+            <dt class="stat__value" data-count="3" data-suffix="">3</dt>
+            <dd class="stat__label">Platforms</dd>
+          </div>
+        </dl>
       </div>
     </section>
 
-    <!-- ======================= FEATURES ======================= -->
-    <section class="section" id="features">
-      <div class="wrap">
-        <h2 class="section__title reveal">Built to get out of your way</h2>
-        <p class="section__sub reveal">Every feature answers one question: does it delete manual work?</p>
-
-        <div class="cards">
-          <article class="card reveal">
-            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
-            <h3>One command</h3>
-            <p><code>lambo init</code> detects your framework from evidence - artisan, composer.json, wp-config - and writes the environment to <code>lambo.yml</code>, showing every probe, including the ones that came back negative.</p>
-            <code class="card__code">lambo init</code>
+    <section class="features" id="features" aria-labelledby="features-title">
+      <div class="container">
+        <header class="section__header">
+          <h2 class="section__title" id="features-title">ENGINEERED FOR SPEED</h2>
+          <p class="section__desc">Every feature eliminates manual work. No configuration files to edit. No PATH to
+            modify. No sudo required.</p>
+        </header>
+        <div class="features__grid">
+          <article class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="32" height="32">
+                <polygon points="13 2 4 14 10 14 9 22 20 10 14 10" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3 class="feature-card__title">One Command Setup</h3>
+            <p class="feature-card__desc">
+              <code>lambo init</code> detects your framework from evidence - artisan, composer.json, wp-config - and
+              writes the environment to <code>lambo.yml</code>.
+            </p>
+            <code class="feature-card__code" data-copy="lambo init">lambo init</code>
+            <span class="feature-card__copy-hint">copied!</span>
           </article>
-
-          <article class="card reveal">
-            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 2.5 20 6v6c0 5-3.5 8.4-8 9.5C7.5 20.4 4 17 4 12V6z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m9 11.5 2 2 4-4"/></svg>
-            <h3>No sudo, ever</h3>
-            <p>Everything lives in <code>%USERPROFILE%\Lambo</code> or <code>~/.lambo</code>. Ports are unprivileged (8080/8443), the installer is per-user, and the database binds to loopback only.</p>
-            <code class="card__code">lambo config set server.port 8080</code>
+          <article class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="32" height="32">
+                <path d="M12 2.5 20 6v6c0 5-3.5 8.4-8 9.5C7.5 20.4 4 17 4 12V6z" fill="none" stroke="currentColor"
+                  stroke-width="2" />
+                <path d="m9 11.5 2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3 class="feature-card__title">No Sudo, Ever</h3>
+            <p class="feature-card__desc">
+              Everything lives in <code>%USERPROFILE%\Lambo</code> or <code>~/.lambo</code>. Ports are unprivileged
+              (8080/8443), the installer is per-user.
+            </p>
+            <code class="feature-card__code"
+              data-copy="lambo config set server.port 8080">lambo config set server.port 8080</code>
+            <span class="feature-card__copy-hint">copied!</span>
           </article>
-
-          <article class="card reveal">
-            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m7 9 3 3-3 3m5 0h5"/></svg>
-            <h3>Native, not Docker</h3>
-            <p>Real filesystem, real localhost, real debugger. Your OS is the runtime - Lambo manages it, so there is no compose file and no volume mount to debug.</p>
-            <code class="card__code">lambo status</code>
+          <article class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="32" height="32">
+                <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+                <path d="m7 9 3 3-3 3m5 0h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Native, Not Docker</h3>
+            <p class="feature-card__desc">
+              Real filesystem, real localhost, real debugger. Your OS is the runtime - no compose file, no volume mount
+              to debug.
+            </p>
+            <code class="feature-card__code" data-copy="lambo status">lambo status</code>
+            <span class="feature-card__copy-hint">copied!</span>
           </article>
-
-          <article class="card reveal">
-            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M14 3v5h5M9 15l-2-2 2-2m4 4 2-2-2-2"/></svg>
-            <h3>Environment as code</h3>
-            <p><code>lambo.yml</code> is human-readable YAML you commit. PHP version, server, database, extensions - the whole environment travels with the repository, with relative paths only.</p>
-            <code class="card__code">php: "8.4" # pins the 8.4.x line</code>
+          <article class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="32" height="32">
+                <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" fill="none" stroke="currentColor"
+                  stroke-width="2" />
+                <path d="M14 3v5h5M9 15l-2-2 2-2m4 4 2-2-2-2" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Environment as Code</h3>
+            <p class="feature-card__desc">
+              <code>lambo.yml</code> is human-readable YAML you commit. PHP version, server, database, extensions - the
+              whole environment travels with the repository.
+            </p>
+            <code class="feature-card__code"
+              data-copy='php: "8.4" # pins the 8.4.x line'>php: "8.4" # pins the 8.4.x line</code>
+            <span class="feature-card__copy-hint">copied!</span>
           </article>
-
-          <article class="card reveal">
-            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l2-5 4 10 2-5h6"/></svg>
-            <h3>Doctor, with an answer</h3>
-            <p>Home, transport, catalogue, runtimes, ports, project, services - <code>lambo doctor</code> checks them in the order <code>lambo up</code> uses, and every finding names the command that fixes it.</p>
-            <code class="card__code">lambo doctor</code>
+          <article class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="32" height="32">
+                <path d="M3 12h4l2-5 4 10 2-5h6" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Doctor with Answers</h3>
+            <p class="feature-card__desc">
+              <code>lambo doctor</code> checks home, transport, catalogue, runtimes, ports, and services in order. Every
+              finding names the command that fixes it.
+            </p>
+            <code class="feature-card__code" data-copy="lambo doctor">lambo doctor</code>
+            <span class="feature-card__copy-hint">copied!</span>
           </article>
-
-          <article class="card reveal">
-            <svg class="card__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="13" width="18" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="7" cy="7.5" r="1" fill="currentColor"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/></svg>
-            <h3>Workspaces</h3>
-            <p>Group the projects you actually work on. A workspace is a list of directories and nothing more, so a project behaves the same inside and outside one.</p>
-            <code class="card__code">lambo workspace add</code>
+          <article class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="32" height="32">
+                <rect x="3" y="4" width="18" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2" />
+                <rect x="3" y="13" width="18" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="2" />
+                <circle cx="7" cy="7.5" r="1" fill="currentColor" />
+                <circle cx="7" cy="16.5" r="1" fill="currentColor" />
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Workspaces</h3>
+            <p class="feature-card__desc">
+              Group the projects you actually work on. A workspace is a list of directories and nothing more, so a
+              project behaves the same inside and outside one.
+            </p>
+            <code class="feature-card__code" data-copy="lambo workspace add">lambo workspace add</code>
+            <span class="feature-card__copy-hint">copied!</span>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- ======================= COMPARE ======================= -->
-    <section class="section" id="compare">
-      <div class="wrap">
-        <h2 class="section__title reveal">Why not the tools you already know?</h2>
-        <p class="section__sub reveal">Honest comparison, best of our knowledge mid-2026. <a href="https://github.com/flessan/kink-php-dev/edit/main/web/index.html">Corrections welcome.</a></p>
+    <section class="demo" id="demo" aria-labelledby="demo-title">
+      <div class="container">
+        <header class="section__header">
+          <h2 class="section__title" id="demo-title">SEE IT IN ACTION</h2>
+          <p class="section__desc">Real output, copied from a terminal. Nothing staged, nothing edited.</p>
+        </header>
+        <div class="terminal" role="region" aria-label="Lambo PHP terminal demo">
+          <div class="terminal__header">
+            <div class="terminal__dots" aria-hidden="true">
+              <span class="dot dot--red"></span>
+              <span class="dot dot--yellow"></span>
+              <span class="dot dot--green"></span>
+            </div>
+            <div class="terminal__title">~/code/shop - lambo</div>
+            <div class="terminal__controls">
+              <div class="terminal__speed" role="group" aria-label="Demo speed">
+                <button type="button" data-speed="120" aria-label="Slow speed">Slow</button>
+                <button type="button" data-speed="80" class="active" aria-label="Normal speed">Normal</button>
+                <button type="button" data-speed="30" aria-label="Fast speed">Fast</button>
+              </div>
+              <button class="terminal__btn" id="term-replay" type="button" aria-label="Replay terminal demo">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                    stroke-linejoin="round" d="M3 12a9 9 0 1 0 3.2-6.9M3 4v5h5" />
+                </svg>
+                Replay
+              </button>
+            </div>
+          </div>
+          <div class="terminal__body" id="term-body" aria-live="polite"></div>
+        </div>
+        <p class="demo__note">
+          That last failure is deliberate: the catalogue ships with no pinned checksums,
+          so Lambo refuses to run a download it cannot verify.
+          <a href="https://github.com/flessan/lambophp/blob/main/docs/installation.md#pinning-checksums"
+            rel="noopener">Pin one and it runs ↗</a>
+        </p>
+      </div>
+    </section>
 
-        <div class="tablewrap reveal" tabindex="0" role="region" aria-label="Feature comparison" aria-describedby="compare-note">
-          <table class="compare">
+    <section class="compare" id="compare" aria-labelledby="compare-title">
+      <div class="container">
+        <header class="section__header">
+          <h2 class="section__title" id="compare-title">WHY NOT THE TOOLS YOU KNOW?</h2>
+          <p class="section__desc">Honest comparison, best of our knowledge mid-2026. <a
+              href="https://github.com/flessan/lambophp/edit/main/web/index.html" rel="noopener">Corrections
+              welcome.</a></p>
+        </header>
+
+        <div class="compare__view-toggle" role="group" aria-label="Comparison view">
+          <button class="compare__view-btn active" data-view="table" type="button">Table</button>
+          <button class="compare__view-btn" data-view="cards" type="button">Cards</button>
+        </div>
+
+        <div class="table-wrapper" id="compare-table" tabindex="0" role="region" aria-label="Comparison table">
+          <table class="compare-table">
+            <caption class="visually-hidden">Comparison of Lambo PHP with XAMPP, Laragon, Docker and Herd</caption>
             <thead>
               <tr>
-                <th scope="col"></th>
-                <th scope="col" class="compare__lambo">Lambo PHP</th>
+                <th scope="col">Feature</th>
+                <th scope="col" class="highlight">LAMBO PHP</th>
                 <th scope="col">XAMPP</th>
                 <th scope="col">Laragon</th>
                 <th scope="col">Docker</th>
@@ -201,147 +2369,888 @@ available for this download, so it cannot be verified.
             <tbody>
               <tr>
                 <th scope="row">Runs natively (no containers)</th>
-                <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="n">-</td><td class="y">✓</td>
+                <td class="highlight yes">✓</td>
+                <td class="yes">✓</td>
+                <td class="yes">✓</td>
+                <td class="no">—</td>
+                <td class="yes">✓</td>
               </tr>
               <tr>
                 <th scope="row">Per-project PHP versions</th>
-                <td class="y">✓</td><td class="n">-</td><td class="p">partial</td><td class="y">✓</td><td class="p">partial</td>
+                <td class="highlight yes">✓</td>
+                <td class="no">—</td>
+                <td class="partial">partial</td>
+                <td class="yes">✓</td>
+                <td class="partial">partial</td>
               </tr>
               <tr>
                 <th scope="row">No sudo for daily work</th>
-                <td class="y">✓</td><td class="p">partial</td><td class="p">partial</td><td class="p">partial</td><td class="p">partial</td>
+                <td class="highlight yes">✓</td>
+                <td class="partial">partial</td>
+                <td class="partial">partial</td>
+                <td class="partial">partial</td>
+                <td class="partial">partial</td>
               </tr>
               <tr>
                 <th scope="row">Linux-first</th>
-                <td class="y">✓</td><td class="p">partial</td><td class="n">-</td><td class="y">✓</td><td class="n">-</td>
+                <td class="highlight yes">✓</td>
+                <td class="partial">partial</td>
+                <td class="no">—</td>
+                <td class="yes">✓</td>
+                <td class="no">—</td>
               </tr>
               <tr>
                 <th scope="row">One-command project bootstrap</th>
-                <td class="y">✓</td><td class="n">-</td><td class="y">✓</td><td class="n">-</td><td class="p">partial</td>
+                <td class="highlight yes">✓</td>
+                <td class="no">—</td>
+                <td class="yes">✓</td>
+                <td class="no">—</td>
+                <td class="partial">partial</td>
               </tr>
               <tr>
                 <th scope="row">Environment as code (committed)</th>
-                <td class="y">✓</td><td class="n">-</td><td class="n">-</td><td class="y">✓</td><td class="n">-</td>
+                <td class="highlight yes">✓</td>
+                <td class="no">—</td>
+                <td class="no">—</td>
+                <td class="yes">✓</td>
+                <td class="no">—</td>
               </tr>
               <tr>
                 <th scope="row">Built-in diagnostics &amp; repair</th>
-                <td class="y">✓</td><td class="n">-</td><td class="n">-</td><td class="n">-</td><td class="n">-</td>
+                <td class="highlight yes">✓</td>
+                <td class="no">—</td>
+                <td class="no">—</td>
+                <td class="no">—</td>
+                <td class="no">—</td>
               </tr>
               <tr>
                 <th scope="row">Fully open source</th>
-                <td class="y">✓</td><td class="n">-</td><td class="n">-</td><td class="p">partial</td><td class="n">-</td>
+                <td class="highlight yes">✓</td>
+                <td class="no">—</td>
+                <td class="no">—</td>
+                <td class="partial">partial</td>
+                <td class="no">—</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p class="fine" id="compare-note">"partial" = possible with caveats: admin installers, global-not-per-project switching, pro tiers, or root-equivalent daemon groups. We like these tools - Lambo PHP just makes different promises.</p>
-      </div>
-    </section>
 
-    <!-- ======================= BUDGETS ======================= -->
-    <section class="section section--tight">
-      <div class="wrap">
-        <div class="budgets reveal">
-          <div class="budget"><strong>&lt; 50 ms</strong><span>cold start</span></div>
-          <div class="budget"><strong>&lt; 100 ms</strong><span>lambo status</span></div>
-          <div class="budget"><strong>&lt; 8 MB</strong><span>release binary</span></div>
-          <div class="budget"><strong>&lt; 50 MB</strong><span>resident memory</span></div>
+        <div class="compare-cards" id="compare-cards" aria-hidden="true">
+          <div class="compare-card is-lambo">
+            <h3>LAMBO PHP</h3>
+            <div class="compare-row"><span>Runs natively</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Per-project PHP versions</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>No sudo for daily work</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Linux-first</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>One-command bootstrap</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Environment as code</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Diagnostics &amp; repair</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Fully open source</span><span class="yes">✓</span></div>
+          </div>
+          <div class="compare-card">
+            <h3>XAMPP</h3>
+            <div class="compare-row"><span>Runs natively</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Per-project PHP versions</span><span class="no">—</span></div>
+            <div class="compare-row"><span>No sudo for daily work</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>Linux-first</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>One-command bootstrap</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Environment as code</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Diagnostics &amp; repair</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Fully open source</span><span class="no">—</span></div>
+          </div>
+          <div class="compare-card">
+            <h3>Laragon</h3>
+            <div class="compare-row"><span>Runs natively</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Per-project PHP versions</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>No sudo for daily work</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>Linux-first</span><span class="no">—</span></div>
+            <div class="compare-row"><span>One-command bootstrap</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Environment as code</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Diagnostics &amp; repair</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Fully open source</span><span class="no">—</span></div>
+          </div>
+          <div class="compare-card">
+            <h3>Docker</h3>
+            <div class="compare-row"><span>Runs natively</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Per-project PHP versions</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>No sudo for daily work</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>Linux-first</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>One-command bootstrap</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Environment as code</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Diagnostics &amp; repair</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Fully open source</span><span class="partial">partial</span></div>
+          </div>
+          <div class="compare-card">
+            <h3>Herd</h3>
+            <div class="compare-row"><span>Runs natively</span><span class="yes">✓</span></div>
+            <div class="compare-row"><span>Per-project PHP versions</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>No sudo for daily work</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>Linux-first</span><span class="no">—</span></div>
+            <div class="compare-row"><span>One-command bootstrap</span><span class="partial">partial</span></div>
+            <div class="compare-row"><span>Environment as code</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Diagnostics &amp; repair</span><span class="no">—</span></div>
+            <div class="compare-row"><span>Fully open source</span><span class="no">—</span></div>
+          </div>
         </div>
-        <p class="fine center reveal">Design budgets from <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/architecture.md">docs/architecture.md</a> - enforced in CI from M7. Targets we're held to, not ads.</p>
+
+        <p class="compare__note">
+          "partial" = possible with caveats: admin installers, global-not-per-project switching, pro tiers, or
+          root-equivalent daemon groups. We like these tools - Lambo PHP just makes different promises.
+        </p>
       </div>
     </section>
 
-    <!-- ======================= ROADMAP ======================= -->
-    <section class="section" id="roadmap">
-      <div class="wrap">
-        <h2 class="section__title reveal">The road ahead</h2>
-        <p class="section__sub reveal">The engine is done. What is left is release engineering, and it is listed honestly.</p>
-
-        <ol class="road" role="list">
-          <li class="road__item road__item--done reveal">
-            <div class="road__m">✓</div>
-            <div><h3>Engine and CLI <span class="tag tag--done">shipped</span></h3>
-            <p>PHP, Apache and MariaDB installed and supervised; <code>init</code>, <code>up</code>, <code>down</code>, <code>status</code>, <code>open</code>, <code>doctor</code>, <code>logs</code>, <code>db</code>, <code>server</code>, <code>config</code>, <code>migrate</code>. 318 tests, clippy clean on Windows, Linux and macOS.</p></div>
+    <section class="roadmap" id="roadmap" aria-labelledby="roadmap-title">
+      <div class="container">
+        <header class="section__header">
+          <h2 class="section__title" id="roadmap-title">THE ROAD AHEAD</h2>
+          <p class="section__desc">The engine is done. What's left is release engineering, and it's listed honestly.</p>
+        </header>
+        <ol class="roadmap__timeline" style="list-style:none">
+          <li class="roadmap__item roadmap__item--done">
+            <div class="roadmap__marker" aria-hidden="true">✓</div>
+            <div class="roadmap__content">
+              <h3 class="roadmap__title">Engine and CLI <span class="tag tag--done">shipped</span></h3>
+              <p class="roadmap__desc">
+                PHP, Apache and MariaDB installed and supervised; init, up, down, status, open, doctor, logs, db,
+                server, config, migrate. 318 tests, clippy clean on Windows, Linux and macOS.
+              </p>
+            </div>
           </li>
-          <li class="road__item road__item--now reveal">
-            <div class="road__m">1</div>
-            <div><h3>Pinned checksums <span class="tag tag--now">next</span></h3>
-            <p>The catalogue ships with <code>sha256: null</code>, so a fresh machine cannot install anything until you pin a digest. That is the one thing standing between here and "just works".</p></div>
+          <li class="roadmap__item roadmap__item--current">
+            <div class="roadmap__marker" aria-hidden="true">1</div>
+            <div class="roadmap__content">
+              <h3 class="roadmap__title">Pinned checksums <span class="tag tag--current">next</span></h3>
+              <p class="roadmap__desc">
+                The catalogue ships with <code>sha256: null</code>, so a fresh machine cannot install anything until you
+                pin a digest. That's the one thing standing between here and "just works".
+              </p>
+            </div>
           </li>
-          <li class="road__item reveal">
-            <div class="road__m">2</div>
-            <div><h3>Apache and MariaDB for macOS <span class="tag">planned</span></h3>
-            <p>No catalogue entries yet; Homebrew's builds are found on <code>PATH</code> in the meantime, or use <code>server.kind: php</code>.</p></div>
+          <li class="roadmap__item">
+            <div class="roadmap__marker" aria-hidden="true">2</div>
+            <div class="roadmap__content">
+              <h3 class="roadmap__title">Apache and MariaDB for macOS <span class="tag">planned</span></h3>
+              <p class="roadmap__desc">
+                No catalogue entries yet; Homebrew's builds are found on PATH in the meantime, or use
+                <code>server.kind: php</code>.
+              </p>
+            </div>
           </li>
-          <li class="road__item reveal">
-            <div class="road__m">3</div>
-            <div><h3>HTTPS <span class="tag">planned</span></h3>
-            <p><code>server.https_port</code> is reserved and the configuration models it, but no local CA is generated yet - <code>lambo up</code> serves plain HTTP on 8080 and says so.</p></div>
-          </li>
-          <li class="road__item reveal">
-            <div class="road__m">4</div>
-            <div><h3>Workspaces that start <span class="tag">planned</span></h3>
-            <p>Per-project ports already work. What is missing is starting a whole workspace and tracking which project holds which port.</p></div>
+          <li class="roadmap__item">
+            <div class="roadmap__marker" aria-hidden="true">3</div>
+            <div class="roadmap__content">
+              <h3 class="roadmap__title">HTTPS <span class="tag">planned</span></h3>
+              <p class="roadmap__desc">
+                <code>server.https_port</code> is reserved and the configuration models it, but no local CA is generated
+                yet - lambo up serves plain HTTP on 8080 and says so.
+              </p>
+            </div>
           </li>
         </ol>
-        <p class="center reveal"><a href="https://github.com/flessan/kink-php-dev/blob/main/docs/roadmap.md">Full roadmap with acceptance criteria ↗</a></p>
+        <div class="roadmap__cta">
+          <a href="https://github.com/flessan/lambophp/blob/main/docs/roadmap.md" rel="noopener">Full roadmap with
+            acceptance criteria ↗</a>
+        </div>
       </div>
     </section>
 
-    <!-- ======================= INSTALL ======================= -->
-    <section class="section" id="install">
-      <div class="wrap">
-        <h2 class="section__title reveal">Install in one line</h2>
-        <p class="section__sub reveal">One binary, no sudo, nothing else to install. Windows users: <code>LamboPHP-Setup.exe</code> from Releases.</p>
+    <section class="faq" id="faq" aria-labelledby="faq-title">
+      <div class="container">
+        <header class="section__header">
+          <h2 class="section__title" id="faq-title">FREQUENTLY ASKED QUESTIONS</h2>
+          <p class="section__desc">Everything you need to know before switching.</p>
+        </header>
+        <div class="faq__search">
+          <svg class="faq__search-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input type="text" id="faq-search" placeholder="Search questions..." aria-label="Search FAQ">
+        </div>
+        <div class="faq__list" id="faq-list">
+          <details class="faq__item">
+            <summary class="faq__question">
+              Is this just a wrapper around XAMPP or Homebrew?
+              <span class="faq__icon" aria-hidden="true"></span>
+            </summary>
+            <div class="faq__answer">
+              <p>No. Lambo downloads isolated, statically-linked (or carefully scoped) native binaries directly into its
+                own directory (<code>~/.lambo</code>). It does not rely on or modify your system's global package
+                manager, ensuring zero conflicts with other tools you might have installed.</p>
+            </div>
+          </details>
+          <details class="faq__item">
+            <summary class="faq__question">
+              Does it work with WordPress, Laravel, and Symfony?
+              <span class="faq__icon" aria-hidden="true"></span>
+            </summary>
+            <div class="faq__answer">
+              <p>Yes. <code>lambo init</code> specifically looks for <code>wp-config.php</code>, <code>artisan</code>,
+                and <code>composer.json</code> to automatically configure the document root, required PHP extensions,
+                and database settings appropriately for each framework.</p>
+            </div>
+          </details>
+          <details class="faq__item">
+            <summary class="faq__question">
+              How do I update PHP versions?
+              <span class="faq__icon" aria-hidden="true"></span>
+            </summary>
+            <div class="faq__answer">
+              <p>Simply change the version in your <code>lambo.yml</code> file (e.g., <code>php: "8.3"</code>) and run
+                <code>lambo up</code>. Lambo will download the new version, wire it up, and gracefully restart the
+                services without touching your old version until you confirm everything works.
+              </p>
+            </div>
+          </details>
+          <details class="faq__item">
+            <summary class="faq__question">
+              Why Rust?
+              <span class="faq__icon" aria-hidden="true"></span>
+            </summary>
+            <div class="faq__answer">
+              <p>Rust provides memory safety, extremely fast startup times (critical for CLI tools), and the ability to
+                compile a single, static binary that runs identically across Windows, macOS, and Linux without requiring
+                users to install a runtime like Node or Python.</p>
+            </div>
+          </details>
+          <details class="faq__item">
+            <summary class="faq__question">
+              Can I use my existing PHP installation alongside Lambo?
+              <span class="faq__icon" aria-hidden="true"></span>
+            </summary>
+            <div class="faq__answer">
+              <p>Yes. Lambo is fully self-contained in <code>~/.lambo</code> and never modifies your <code>PATH</code>.
+                Your system PHP, Homebrew PHP, or any other installation remains untouched and available for other
+                tools.</p>
+            </div>
+          </details>
+          <details class="faq__item">
+            <summary class="faq__question">
+              How does Lambo handle database persistence?
+              <span class="faq__icon" aria-hidden="true"></span>
+            </summary>
+            <div class="faq__answer">
+              <p>MariaDB data lives in <code>~/.lambo/data</code> and survives restarts, upgrades, and
+                <code>lambo down</code>. Only <code>lambo purge</code> (an explicit, destructive command) removes data,
+                and even then it asks first.
+              </p>
+            </div>
+          </details>
+        </div>
+        <p class="faq__empty" id="faq-empty">No questions match your search.</p>
+      </div>
+    </section>
 
-        <div class="install install--block reveal">
-          <code class="install__cmd">curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh</code>
-          <button class="install__copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh" aria-label="Copy install command">
-            <svg class="icon-copy" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h10v12H9z"/><path fill="none" stroke="currentColor" stroke-width="2" d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
-            <svg class="icon-check" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M4 12.5 9.5 18 20 6"/></svg>
+    <section class="install-section" id="install" aria-labelledby="install-title">
+      <div class="container">
+        <header class="section__header">
+          <h2 class="section__title" id="install-title">INSTALL IN ONE LINE</h2>
+          <p class="section__desc">One binary, no sudo, nothing else to install. Pick your platform.</p>
+        </header>
+
+        <div class="os-tabs" role="tablist" aria-label="Operating system">
+          <button class="os-tab active" data-os="unix" type="button" role="tab" aria-selected="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2a4 4 0 0 0-4 4v3a4 4 0 0 0 8 0V6a4 4 0 0 0-4-4z" />
+              <path d="M5 12c2 1 4 1 7 1s5 0 7-1c0 5-3 9-7 9s-7-4-7-9z" />
+            </svg>
+            Linux / macOS
           </button>
-          <span class="visually-hidden" aria-live="polite" data-copy-status></span>
+          <button class="os-tab" data-os="windows" type="button" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <path
+                d="M3 5.5 10.5 4.5v7H3v-6zM10.5 12.5v7L3 18.5v-6h7.5zM11.5 4.3 21 3v8.5h-9.5V4.3zM21 12.5V21l-9.5-1.3v-7.2H21z" />
+            </svg>
+            Windows
+          </button>
+          <button class="os-tab" data-os="source" type="button" role="tab" aria-selected="false">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+            From source
+          </button>
         </div>
 
-        <div class="installalt reveal">
-          <div>
+        <div class="install__block">
+          <code class="install__cmd"
+            id="os-install-cmd">curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh</code>
+          <button class="install__copy" type="button"
+            data-copy="curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh"
+            aria-label="Copy install command to clipboard">
+            <svg class="icon-copy" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h10v12H9z" />
+              <path fill="none" stroke="currentColor" stroke-width="2"
+                d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+            </svg>
+            <svg class="icon-check" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                d="M4 12.5 9.5 18 20 6" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="install__alternatives">
+          <article class="install__alt">
             <h4>Everything it installs</h4>
-            <p>One binary, plus <code>%USERPROFILE%\Lambo</code> or <code>~/.lambo</code> on first use. That is the whole footprint.</p>
-          </div>
-          <div>
-            <h4>From source</h4>
-            <p><code>git clone https://github.com/flessan/kink-php-dev &amp;&amp; cd kink-php-dev &amp;&amp; cargo build --release</code></p>
-          </div>
-          <div>
+            <p>One binary, plus <code>%USERPROFILE%\Lambo</code> or <code>~/.lambo</code> on first use. That's the whole
+              footprint.</p>
+          </article>
+          <article class="install__alt">
+            <h4>Verify the binary</h4>
+            <p><code>lambo --version</code> should print <code>lambo 0.1.0</code>. If not, run
+              <code>lambo doctor</code>.
+            </p>
+          </article>
+          <article class="install__alt">
             <h4>Uninstall</h4>
-            <p>Run the uninstaller, or <code>rm -rf ~/.lambo ~/.local/bin/lambo</code>. Your data is never deleted for you.</p>
-          </div>
+            <p>Run the uninstaller, or <code>rm -rf ~/.lambo ~/.local/bin/lambo</code>. Your data is never deleted for
+              you.</p>
+          </article>
         </div>
-
-        <p class="fine center reveal">Windows users: grab <code>LamboPHP-Setup.exe</code> or the portable <code>LamboPHP-windows-amd64.zip</code> from <a href="https://github.com/flessan/kink-php-dev/releases">Releases</a>. Portable mode: set <code>LAMBO_HOME</code> anywhere - even a USB stick.</p>
       </div>
     </section>
   </main>
 
-  <!-- ======================= FOOTER ======================= -->
-  <footer class="footer">
-    <div class="wrap footer__inner">
-      <div class="footer__brand">
-        <img src="favicon.svg" alt="" width="22" height="22" />
-        <span>Lambo PHP</span>
-        <span class="footer__tag">The native PHP workspace manager.</span>
+  <footer class="footer" role="contentinfo">
+    <div class="container">
+      <div class="footer__inner">
+        <div class="footer__brand">
+          <img src="./gajahphp.png" alt="Lambo PHP Icon">
+          <span>LAMBO<span class="accent">PHP</span></span>
+          <span class="footer__tagline">The native PHP workspace manager.</span>
+        </div>
+        <nav class="footer__links" aria-label="Footer">
+          <a href="https://github.com/flessan/lambophp" rel="noopener">GitHub</a>
+          <a href="https://github.com/flessan/lambophp/blob/main/docs/commands.md" rel="noopener">Commands</a>
+          <a href="https://github.com/flessan/lambophp/blob/main/docs/faq.md" rel="noopener">FAQ</a>
+          <a href="https://github.com/flessan/lambophp/blob/main/CONTRIBUTING.md" rel="noopener">Contribute</a>
+          <a href="https://github.com/flessan/lambophp/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+          <a href="https://github.com/flessan/lambophp/security/advisories/new" rel="noopener">Security</a>
+        </nav>
+        <p class="footer__copy">MIT OR Apache-2.0 · © 2026 Lambo PHP contributors · Built with Rust</p>
       </div>
-      <nav class="footer__links" aria-label="Footer">
-        <a href="https://github.com/flessan/kink-php-dev">GitHub</a>
-        <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/commands.md">Commands</a>
-        <a href="https://github.com/flessan/kink-php-dev/blob/main/docs/faq.md">FAQ</a>
-        <a href="https://github.com/flessan/kink-php-dev/blob/main/CONTRIBUTING.md">Contribute</a>
-        <a href="https://github.com/flessan/kink-php-dev/blob/main/CHANGELOG.md">Changelog</a>
-        <a href="https://github.com/flessan/kink-php-dev/security/advisories/new">Security</a>
-      </nav>
-      <p class="footer__copy">MIT OR Apache-2.0 · © <span id="year">2026</span> Lambo PHP contributors · Built with Rust 🦀</p>
     </div>
   </footer>
 
+  <noscript>
+    <p style="background:#1a0b2e;color:#f3e8ff;padding:16px;text-align:center;">
+      This page's interactive demo needs JavaScript. The install command is:
+      <code>curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh</code>
+    </p>
+  </noscript>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      /* ---------- Theme toggle ---------- */
+      const themeToggle = $('#theme-toggle');
+      const darkIcon = $('.theme-icon-dark');
+      const lightIcon = $('.theme-icon-light');
+      const savedTheme = localStorage.getItem('lambo-theme');
+      if (savedTheme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        darkIcon.style.display = 'none';
+        lightIcon.style.display = 'block';
+      }
+      themeToggle?.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('lambo-theme', next);
+        const isLight = next === 'light';
+        darkIcon.style.display = isLight ? 'none' : 'block';
+        lightIcon.style.display = isLight ? 'block' : 'none';
+      });
+
+      /* ---------- Mobile nav toggle ---------- */
+      const navToggle = $('#nav-toggle');
+      const navLinks = $('#nav-links');
+      if (navToggle && navLinks) {
+        navToggle.addEventListener('click', () => {
+          const isOpen = navLinks.classList.toggle('is-open');
+          navToggle.setAttribute('aria-expanded', String(isOpen));
+        });
+        navLinks.querySelectorAll('a').forEach(a => {
+          a.addEventListener('click', () => {
+            navLinks.classList.remove('is-open');
+            navToggle.setAttribute('aria-expanded', 'false');
+          });
+        });
+      }
+
+      /* ---------- Toast ---------- */
+      const toast = $('#toast');
+      let toastTimer;
+      function showToast(message) {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+      }
+
+      /* ---------- Copy to clipboard ---------- */
+      async function copyText(text, button) {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          if (button) {
+            button.classList.add('copied');
+            setTimeout(() => button.classList.remove('copied'), 2000);
+          }
+          showToast('Copied to clipboard');
+        } catch (err) {
+          console.error('Failed to copy:', err);
+          showToast('Copy failed - copy manually');
+        }
+      }
+
+      $$('.install__copy').forEach(button => {
+        button.addEventListener('click', () => copyText(button.dataset.copy, button));
+      });
+
+      $$('.feature-card__code').forEach(code => {
+        code.addEventListener('click', async () => {
+          const text = code.dataset.copy || code.textContent;
+          await copyText(text);
+          const card = code.closest('.feature-card');
+          card?.classList.add('copied-active');
+          setTimeout(() => card?.classList.remove('copied-active'), 1500);
+        });
+        code.setAttribute('title', 'Click to copy');
+        code.setAttribute('tabindex', '0');
+        code.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            code.click();
+          }
+        });
+      });
+
+      /* ---------- Terminal demo ---------- */
+      const terminalBody = $('#term-body');
+      const replayButton = $('#term-replay');
+      const terminalContent = [
+        { type: 'cmd', text: 'lambo init' },
+        { type: 'ok', text: '✔ created `/home/dev/shop/lambo.yml`' },
+        { type: 'head', text: '── Detected' },
+        { type: 'dim', text: '  framework      plain PHP' },
+        { type: 'dim', text: '  · [no ] composer.json' },
+        { type: 'dim', text: '  · [no ] artisan' },
+        { type: 'dim', text: '  · [yes] index.php' },
+        { type: 'head', text: '── Configuration' },
+        { type: 'dim', text: '  php            stable' },
+        { type: 'dim', text: '  server         apache' },
+        { type: 'dim', text: '  document root  .' },
+        { type: 'dim', text: '  database       disabled' },
+        { type: 'blank', text: '' },
+        { type: 'cmd', text: 'lambo doctor' },
+        { type: 'head', text: '── Diagnostics' },
+        { type: 'ok', text: '✔ lambo home: /home/dev/.lambo' },
+        { type: 'ok', text: '✔ catalogue: 2 PHP, 0 Apache and 1 MariaDB releases for linux-x64' },
+        { type: 'fail', text: '✖ php: no PHP version is installed' },
+        { type: 'dim', text: '  hint: lambo php install stable' },
+        { type: 'ok', text: '✔ ports: server.port: 8080 is free' },
+        { type: 'ok', text: '✔ project: shop: plain PHP served from /home/dev/shop' },
+        { type: 'blank', text: '' },
+        { type: 'cmd', text: 'lambo up --no-browser' },
+        { type: 'head', text: '── Starting shop' },
+        { type: 'fail', text: 'error: PHP stable failed to start: download failed: … no checksum is' },
+        { type: 'fail', text: 'available for this download, so it cannot be verified.' },
+        { type: 'dim', text: '  next: lambo php install stable, or `lambo init --php <version>`' }
+      ];
+
+      let typingTimer;
+      let currentSpeed = 80;
+
+      function renderTerminal() {
+        clearTimeout(typingTimer);
+        terminalBody.innerHTML = '';
+        terminalContent.forEach((line, index) => {
+          typingTimer = setTimeout(() => {
+            const div = document.createElement('div');
+            if (line.type === 'blank') {
+              div.innerHTML = '&nbsp;';
+            } else {
+              div.className = `t-${line.type}`;
+              div.textContent = line.text;
+            }
+            terminalBody.appendChild(div);
+            terminalBody.scrollTop = terminalBody.scrollHeight;
+          }, index * currentSpeed);
+        });
+      }
+      renderTerminal();
+      replayButton?.addEventListener('click', renderTerminal);
+
+      $$('.terminal__speed button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          $$('.terminal__speed button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentSpeed = parseInt(btn.dataset.speed, 10);
+          renderTerminal();
+        });
+      });
+
+      /* ---------- Smooth scroll ---------- */
+      const navHeight = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 70;
+      $$('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+          const href = this.getAttribute('href');
+          if (href === '#' || href.length < 2) return;
+          const target = document.querySelector(href);
+          if (target) {
+            e.preventDefault();
+            const targetPosition = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 12;
+            window.scrollTo({ top: targetPosition, behavior: reduceMotion ? 'auto' : 'smooth' });
+            history.pushState(null, '', href);
+          }
+        });
+      });
+
+      /* ---------- Intersection Observer for cards ---------- */
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = '1';
+            entry.target.style.transform = 'translateY(0)';
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+      $$('.feature-card').forEach((card, index) => {
+        if (reduceMotion) return;
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(30px)';
+        card.style.transition = `opacity 0.6s ease ${index * 0.08}s, transform 0.6s ease ${index * 0.08}s, border-color 0.3s, box-shadow 0.3s`;
+        observer.observe(card);
+      });
+
+      /* ---------- Stat counter animation ---------- */
+      const statValues = $$('.stat__value[data-count]');
+      const statObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const el = entry.target;
+            const target = parseInt(el.dataset.count, 10);
+            const prefix = el.dataset.prefix || '';
+            const suffix = el.dataset.suffix || '';
+            if (reduceMotion) {
+              el.textContent = `${prefix}${target}${suffix}`;
+            } else {
+              const duration = 1200;
+              const startTime = performance.now();
+              function tick(now) {
+                const progress = Math.min((now - startTime) / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                const value = Math.floor(eased * target);
+                el.textContent = `${prefix}${value}${suffix}`;
+                if (progress < 1) requestAnimationFrame(tick);
+                else el.textContent = `${prefix}${target}${suffix}`;
+              }
+              requestAnimationFrame(tick);
+            }
+            statObserver.unobserve(el);
+          }
+        });
+      }, { threshold: 0.5 });
+      statValues.forEach(s => statObserver.observe(s));
+
+      /* ---------- Parallax ---------- */
+      if (!reduceMotion) {
+        const hexGrid = $('.hex-grid');
+        const speedLines = $('.speed-lines');
+        let ticking = false;
+        window.addEventListener('scroll', () => {
+          if (!ticking) {
+            requestAnimationFrame(() => {
+              const scrolled = window.pageYOffset;
+              if (hexGrid) hexGrid.style.transform = `translateY(${scrolled * 0.3}px)`;
+              if (speedLines) speedLines.style.transform = `translateY(${scrolled * 0.2}px)`;
+              ticking = false;
+            });
+            ticking = true;
+          }
+        }, { passive: true });
+      }
+
+      /* ---------- Active nav link on scroll ---------- */
+      const sections = $$('section[id]');
+      const navAnchors = $$('.nav__links a[href^="#"]');
+      let scrollTicking = false;
+      window.addEventListener('scroll', () => {
+        if (!scrollTicking) {
+          requestAnimationFrame(() => {
+            let current = '';
+            sections.forEach(section => {
+              const top = section.offsetTop - 120;
+              if (window.pageYOffset >= top) current = section.getAttribute('id');
+            });
+            navAnchors.forEach(link => {
+              link.classList.toggle('active', link.getAttribute('href') === `#${current}`);
+            });
+            scrollTicking = false;
+          });
+          scrollTicking = true;
+        }
+      }, { passive: true });
+
+      /* ---------- Scroll progress + back to top ---------- */
+      const progressBar = $('#scroll-progress');
+      const backToTop = $('#back-to-top');
+      let progressTicking = false;
+      window.addEventListener('scroll', () => {
+        if (!progressTicking) {
+          requestAnimationFrame(() => {
+            const scrollTop = window.pageYOffset;
+            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            const pct = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0;
+            if (progressBar) progressBar.style.width = `${pct}%`;
+            if (backToTop) backToTop.classList.toggle('visible', scrollTop > 400);
+            progressTicking = false;
+          });
+          progressTicking = true;
+        }
+      }, { passive: true });
+      backToTop?.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+      });
+
+      /* ---------- Compare view toggle ---------- */
+      const compareTable = $('#compare-table');
+      const compareCards = $('#compare-cards');
+      $$('.compare__view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          $$('.compare__view-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const view = btn.dataset.view;
+          if (view === 'table') {
+            compareTable.style.display = '';
+            compareCards.classList.remove('active');
+            compareCards.setAttribute('aria-hidden', 'true');
+            compareTable.setAttribute('aria-hidden', 'false');
+          } else {
+            compareTable.style.display = 'none';
+            compareCards.classList.add('active');
+            compareCards.setAttribute('aria-hidden', 'false');
+            compareTable.setAttribute('aria-hidden', 'true');
+          }
+        });
+      });
+
+      /* ---------- OS tabs ---------- */
+      const osCommands = {
+        unix: 'curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh',
+        windows: 'irm https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.ps1 | iex',
+        source: 'git clone https://github.com/flessan/lambophp && cd lambophp && cargo build --release'
+      };
+      const osInstallCmd = $('#os-install-cmd');
+      const osCopyBtn = $$('.install-section .install__copy')[0];
+      $$('.os-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          $$('.os-tab').forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+          const os = tab.dataset.os;
+          const cmd = osCommands[os];
+          osInstallCmd.textContent = cmd;
+          if (osCopyBtn) osCopyBtn.dataset.copy = cmd;
+        });
+      });
+
+      /* ---------- FAQ search ---------- */
+      const faqSearch = $('#faq-search');
+      const faqItems = $$('.faq__item');
+      const faqEmpty = $('#faq-empty');
+      faqSearch?.addEventListener('input', () => {
+        const query = faqSearch.value.trim().toLowerCase();
+        let visible = 0;
+        faqItems.forEach(item => {
+          const text = item.textContent.toLowerCase();
+          const match = !query || text.includes(query);
+          item.classList.toggle('hidden', !match);
+          if (match) visible++;
+        });
+        faqEmpty.classList.toggle('show', visible === 0);
+      });
+
+      /* ---------- FAQ keyboard ---------- */
+      $$('.faq__item').forEach(item => {
+        const q = item.querySelector('.faq__question');
+        q?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            item.open = !item.open;
+          }
+        });
+      });
+
+      /* ---------- Command palette ---------- */
+      const palette = $('#palette');
+      const paletteInput = $('#palette-input');
+      const paletteList = $('#palette-list');
+      const paletteBtn = $('#palette-btn');
+
+      const commands = [
+        { label: 'Go to Features', href: '#features', kind: 'section' },
+        { label: 'Go to Demo', href: '#demo', kind: 'section' },
+        { label: 'Go to Compare', href: '#compare', kind: 'section' },
+        { label: 'Go to Roadmap', href: '#roadmap', kind: 'section' },
+        { label: 'Go to FAQ', href: '#faq', kind: 'section' },
+        { label: 'Go to Install', href: '#install', kind: 'section' },
+        { label: 'GitHub Repository', href: 'https://github.com/flessan/lambophp', kind: 'external' },
+        { label: 'Documentation', href: 'https://github.com/flessan/lambophp/blob/main/docs/commands.md', kind: 'external' },
+        { label: 'Copy: lambo init', copy: 'lambo init', kind: 'command' },
+        { label: 'Copy: lambo up', copy: 'lambo up', kind: 'command' },
+        { label: 'Copy: lambo doctor', copy: 'lambo doctor', kind: 'command' },
+        { label: 'Copy: lambo status', copy: 'lambo status', kind: 'command' },
+        { label: 'Copy: lambo php install stable', copy: 'lambo php install stable', kind: 'command' },
+        { label: 'Copy: install command (curl)', copy: osCommands.unix, kind: 'command' },
+        { label: 'Toggle theme', action: 'theme', kind: 'action' }
+      ];
+
+      let paletteIndex = 0;
+      const sectionIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>';
+      const extIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+      const cmdIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+      const actionIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>';
+
+      function iconFor(kind) {
+        if (kind === 'section') return sectionIcon;
+        if (kind === 'external') return extIcon;
+        if (kind === 'command') return cmdIcon;
+        return actionIcon;
+      }
+
+      function renderPalette(query = '') {
+        const q = query.trim().toLowerCase();
+        const filtered = commands.filter(c => !q || c.label.toLowerCase().includes(q));
+        paletteList.innerHTML = '';
+        paletteIndex = 0;
+        if (filtered.length === 0) {
+          paletteList.innerHTML = '<li class="palette__empty">No results found</li>';
+          return;
+        }
+        filtered.forEach((cmd, i) => {
+          const li = document.createElement('li');
+          li.className = 'palette__item' + (i === 0 ? ' selected' : '');
+          li.setAttribute('role', 'option');
+          li.dataset.index = i;
+          li.innerHTML = `${iconFor(cmd.kind)}<span>${cmd.label}</span>`;
+          if (cmd.kind === 'command') {
+            const shortcut = document.createElement('span');
+            shortcut.className = 'palette__shortcut';
+            shortcut.textContent = '⏎ copy';
+            li.appendChild(shortcut);
+          }
+          li.addEventListener('click', () => executePalette(cmd));
+          li.addEventListener('mouseenter', () => {
+            paletteIndex = i;
+            updatePaletteSelection();
+          });
+          paletteList.appendChild(li);
+        });
+      }
+
+      function updatePaletteSelection() {
+        paletteList.querySelectorAll('.palette__item').forEach((li, i) => {
+          li.classList.toggle('selected', i === paletteIndex);
+          if (i === paletteIndex) li.scrollIntoView({ block: 'nearest' });
+        });
+      }
+
+      async function executePalette(cmd) {
+        closePalette();
+        if (cmd.href) {
+          if (cmd.href.startsWith('#')) {
+            const target = document.querySelector(cmd.href);
+            if (target) {
+              const top = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 12;
+              window.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' });
+              history.pushState(null, '', cmd.href);
+            }
+          } else {
+            window.open(cmd.href, '_blank', 'noopener');
+          }
+        } else if (cmd.copy) {
+          await copyText(cmd.copy);
+        } else if (cmd.action === 'theme') {
+          themeToggle?.click();
+        }
+      }
+
+      function openPalette() {
+        palette.classList.add('open');
+        paletteInput.value = '';
+        renderPalette('');
+        setTimeout(() => paletteInput.focus(), 50);
+      }
+      function closePalette() {
+        palette.classList.remove('open');
+      }
+
+      paletteBtn?.addEventListener('click', openPalette);
+      palette.addEventListener('click', (e) => {
+        if (e.target === palette) closePalette();
+      });
+      paletteInput.addEventListener('input', () => renderPalette(paletteInput.value));
+      paletteInput.addEventListener('keydown', (e) => {
+        const items = paletteList.querySelectorAll('.palette__item');
+        if (items.length === 0) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          paletteIndex = (paletteIndex + 1) % items.length;
+          updatePaletteSelection();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          paletteIndex = (paletteIndex - 1 + items.length) % items.length;
+          updatePaletteSelection();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const filtered = commands.filter(c => !paletteInput.value || c.label.toLowerCase().includes(paletteInput.value.toLowerCase()));
+          if (filtered[paletteIndex]) executePalette(filtered[paletteIndex]);
+        } else if (e.key === 'Escape') {
+          closePalette();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          palette.classList.contains('open') ? closePalette() : openPalette();
+        }
+        if (e.key === 'Escape' && palette.classList.contains('open')) {
+          closePalette();
+        }
+      });
+
+      /* ---------- Init: hide cards view by default ---------- */
+      compareCards.classList.remove('active');
+      compareCards.setAttribute('aria-hidden', 'true');
+    });
+  </script>
 </body>
+
 </html>

@@ -1,10 +1,10 @@
 #!/bin/sh
 # Lambo PHP installer (Linux and macOS)
 #
-#   curl -fsSL https://raw.githubusercontent.com/flessan/kink-php-dev/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/flessan/lambophp/main/scripts/install.sh | sh
 #
 # On Windows, download LamboPHP-Setup.exe (or the portable zip) from the
-# latest release instead: https://github.com/flessan/kink-php-dev/releases
+# latest release instead: https://github.com/flessan/lambophp/releases
 #
 # Environment knobs:
 #   LAMBO_VERSION     install a specific tag (e.g. "v0.2.0"); default: latest
@@ -15,7 +15,7 @@
 
 set -eu
 
-REPO="flessan/kink-php-dev"
+REPO="flessan/lambophp"
 RELEASES="https://github.com/${REPO}/releases"
 
 say()  { printf '%s\n' "$*"; }

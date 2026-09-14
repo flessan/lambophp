@@ -20,8 +20,8 @@ guide explains the rules that keep that true.
 ## Setup
 
 ```bash
-git clone https://github.com/flessan/kink-php-dev.git
-cd kink-php-dev
+git clone https://github.com/flessan/lambophp.git
+cd lambophp
 rustup show           # installs the toolchain pinned in rust-toolchain.toml
 cargo test --workspace
 ```

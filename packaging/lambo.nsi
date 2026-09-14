@@ -19,7 +19,7 @@ Unicode true
 ; to HKCU\Software\LamboPHP. Falling back to a placeholder would let a
 ; mis-invoked build ship an installer that calls itself the wrong thing.
 !ifndef VERSION
-  !error "VERSION must be the release version, e.g. /DVERSION=0.13.0-rc.1"
+  !error "VERSION must be the release version, e.g. /DVERSION=0.14.0-rc.1"
 !endif
 !ifndef BINARY
   !error "BINARY must point at lambo.exe"

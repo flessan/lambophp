@@ -92,7 +92,7 @@ which one - the URL it prints is the one to open.
 Everything Lambo writes lives under LAMBO_HOME; nothing is installed
 system-wide and no administrator rights are needed.
 
-Documentation: https://github.com/flessan/kink-php-dev/tree/main/docs
+Documentation: https://github.com/flessan/lambophp/tree/main/docs
 EOF
 
 echo "dist/lambo-${LAMBO_NAME}${exe}"

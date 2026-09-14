@@ -34,7 +34,7 @@ use crate::error::Result;
                   lambo init          # detect the project, write lambo.yml\n  \
                   lambo up            # start Apache + the database\n  \
                   open http://localhost\n\n\
-                  Docs: https://github.com/flessan/kink-php-dev/tree/main/docs"
+                  Docs: https://github.com/flessan/lambophp/tree/main/docs"
 )]
 struct Cli {
     #[command(subcommand)]

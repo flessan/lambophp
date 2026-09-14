@@ -13,12 +13,12 @@ resolver = "3"
 members = ["crates/lambo-core", "crates/lambo-cli", "crates/lambo-gui"]
 
 [workspace.package]
-version = "0.13.0-rc.1"
+version = "0.14.0-rc.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/flessan/kink-php-dev"
-homepage = "https://lambo-php.dev"
+repository = "https://github.com/flessan/lambophp"
+homepage = "https://lambo-nya.thio.cc.cd"
 
 [workspace.dependencies]
 # Internal crates.

@@ -8,7 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 _Nothing yet._
 
-## [0.13.0-rc.1] - release candidate
+## [0.14.0-rc.1] - release candidate
 
 This is a **release candidate**, not a stable release. It has not been
 validated on a physical Windows machine; see
@@ -785,7 +785,7 @@ the primary platform.
     references, FAQ
   - Issue/feature/discussion templates, contributing guide, CoC, security policy
 
-[Unreleased]: https://github.com/flessan/kink-php-dev/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/flessan/kink-php-dev/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/flessan/kink-php-dev/compare/v0.4.0...v0.5.0
-[0.1.0]: https://github.com/flessan/kink-php-dev/releases/tag/v0.1.0
+[Unreleased]: https://github.com/flessan/lambophp/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/flessan/lambophp/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/flessan/lambophp/compare/v0.4.0...v0.5.0
+[0.1.0]: https://github.com/flessan/lambophp/releases/tag/v0.1.0

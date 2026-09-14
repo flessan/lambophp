@@ -157,7 +157,7 @@ Everything Lambo writes lives under LAMBO_HOME (%USERPROFILE%\Lambo by
 default). No administrator rights are needed, and uninstalling removes the
 application while leaving your projects and databases alone.
 
-Documentation: https://github.com/flessan/kink-php-dev/tree/main/docs
+Documentation: https://github.com/flessan/lambophp/tree/main/docs
 "@ | Set-Content -Encoding utf8 (Join-Path $payloadDir "README.txt")
 
 # Nothing from the test tree may ship. This is a guard rather than a cleanup
