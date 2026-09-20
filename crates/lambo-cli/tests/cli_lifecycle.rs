@@ -19,6 +19,10 @@
 //! Physical Windows behaviour and a real desktop browser remain manual smoke
 //! tests - see `docs/windows.md`.
 
+#[path = "support/capture.rs"]
+mod capture;
+
+use std::cell::Cell;
 use std::fs;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
@@ -84,6 +88,7 @@ struct Harness {
     home: TempDir,
     project: TempDir,
     port: u16,
+    invocation: Cell<usize>,
 }
 
 impl Harness {
@@ -116,19 +121,30 @@ impl Harness {
             home,
             project,
             port,
+            invocation: Cell::new(0),
         }
     }
 
     /// Runs `lambo` with this home, in the project directory.
     fn lambo(&self, args: &[&str]) -> Output {
-        Command::new(lambo())
+        let invocation = self.invocation.get() + 1;
+        self.invocation.set(invocation);
+        let mut command = Command::new(lambo());
+        command
             .args(args)
             .current_dir(&self.project.path)
             .env(lambo_core::paths::HOME_ENV, &self.home.path)
             // Never inherit a developer's own Lambo home or colour settings.
-            .env("NO_COLOR", "1")
-            .output()
-            .unwrap_or_else(|error| panic!("could not run `lambo {}`: {error}", args.join(" ")))
+            .env("NO_COLOR", "1");
+        capture::output(&mut command, WAIT).unwrap_or_else(|error| {
+            panic!(
+                "CLI invocation #{invocation}: `lambo {}` did not complete within {WAIT:?}\n\
+                 project: {}\nhome: {}\n{error}",
+                args.join(" "),
+                self.project.path.display(),
+                self.home.path.display(),
+            )
+        })
     }
 
     /// Runs a command and asserts it exited zero, showing its output if not.
@@ -195,26 +211,32 @@ fn free_port() -> u16 {
     panic!("no free port could be allocated");
 }
 
-/// Polls until `predicate` holds, then returns.
-fn wait_until(what: &str, harness: &Harness, predicate: impl Fn() -> bool) {
+/// Polls until a probe returns a value, retaining its last error on failure.
+fn wait_until<T>(
+    what: &str,
+    harness: &Harness,
+    mut predicate: impl FnMut() -> Result<Option<T>, String>,
+) -> T {
     let deadline = Instant::now() + WAIT;
+    let mut last = "condition was not satisfied".to_owned();
     while Instant::now() < deadline {
-        if predicate() {
-            return;
+        match predicate() {
+            Ok(Some(value)) => return value,
+            Ok(None) => last = "condition was not satisfied".to_owned(),
+            Err(error) => last = error,
         }
         std::thread::sleep(POLL);
     }
     let status = harness.lambo(&["status"]);
     panic!(
-        "timed out after {WAIT:?} waiting for {what}\n--- lambo status ---\n{}",
+        "timed out after {WAIT:?} waiting for {what}\nlast probe: {last}\n--- lambo status ---\n{}",
         String::from_utf8_lossy(&status.stdout)
     );
 }
 
-/// A real HTTP GET, returning the status code and body.
-fn http_get(url: &str) -> Option<(u16, String)> {
+/// A real HTTP GET, preserving the error as well as the status code and body.
+fn http_get(url: &str) -> lambo_core::error::Result<(u16, String)> {
     lambo_core::http::get(url, Duration::from_secs(5))
-        .ok()
         .map(|response| (response.status, response.body))
 }
 
@@ -285,10 +307,9 @@ fn init_up_status_down_status_through_the_command_line() {
 
     // The acceptance criterion, observed rather than inferred: a real TCP
     // connection returns a real HTTP response.
-    wait_until("the server to answer", &harness, || {
-        http_get(&url).is_some()
+    let (status, body) = wait_until("the server to answer", &harness, || {
+        http_get(&url).map(Some).map_err(|error| error.to_string())
     });
-    let (status, body) = http_get(&url).expect("response");
     assert_eq!(status, 200, "expected HTTP 200 from the fixture server");
     assert_eq!(body, "Lambo PHP fixture OK", "unexpected body");
 
@@ -313,7 +334,10 @@ fn init_up_status_down_status_through_the_command_line() {
     // Not merely "the record is gone": the endpoint must stop answering and
     // the port must be released.
     wait_until("the server to stop answering", &harness, || {
-        http_get(&url).is_none() && TcpStream::connect(("127.0.0.1", port)).is_err()
+        Ok(
+            (http_get(&url).is_err() && TcpStream::connect(("127.0.0.1", port)).is_err())
+                .then_some(()),
+        )
     });
 
     // --- lambo status, after down ------------------------------------------
@@ -461,4 +485,68 @@ fn an_unknown_subcommand_is_rejected_with_a_nonzero_exit() {
         !stderr.is_empty(),
         "an unknown subcommand must say something"
     );
+}
+
+/// Exercise the HTTP helper in this integration-test executable, after a real
+/// CLI invocation with captured output, rather than only in lambo-core's unit
+/// test executable. Failure must retain the HTTP error, not become `None`.
+#[test]
+fn http_probe_after_captured_cli_output_preserves_response_and_error() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let output = Command::new(lambo()).arg("--version").output().unwrap();
+    assert!(output.status.success());
+
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        for response in [
+            "HTTP/1.1 200 OK\r\nContent-Length: 19\r\nConnection: close\r\n\r\nLambo PHP fixture OK",
+            "not an HTTP response",
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            stream
+                .set_write_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+                assert!(request.len() < 8192);
+            }
+            stream.write_all(response.as_bytes()).unwrap();
+        }
+    });
+
+    let url = format!("http://localhost:{port}");
+    let response = http_get(&url).expect("HTTP probe after Command::output");
+    assert_eq!(response, (200, "Lambo PHP fixture OK".to_owned()));
+    let error = http_get(&url).unwrap_err();
+    assert!(matches!(error, lambo_core::error::Error::Http { .. }));
+    assert!(error.to_string().contains(&url), "{error}");
+    assert!(
+        error.to_string().contains("without sending a response"),
+        "{error}"
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn bounded_cli_capture_preserves_success_and_failure_output() {
+    let mut version = Command::new(lambo());
+    version.arg("--version");
+    let output = capture::output(&mut version, WAIT).expect("captured version");
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("lambo"));
+
+    let mut invalid = Command::new(lambo());
+    invalid.arg("definitely-not-a-command");
+    let output = capture::output(&mut invalid, WAIT).expect("captured CLI error");
+    assert!(!output.status.success());
+    assert!(!output.stderr.is_empty());
 }

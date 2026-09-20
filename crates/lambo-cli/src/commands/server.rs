@@ -8,7 +8,7 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 use lambo_core::session;
-use lambo_core::state::names;
+use lambo_core::session::WEB_SERVICES;
 
 use crate::error::Result;
 use crate::ui::Ui;
@@ -60,7 +60,8 @@ fn start(ui: &Ui) -> Result<ExitCode> {
 
 fn stop(ui: &Ui) -> Result<ExitCode> {
     let mut context = super::context()?;
-    ui.ok(session::stop_server(&mut context)?);
+    let project = super::project_or_none()?;
+    ui.ok(session::stop_server(project.as_ref(), &mut context)?);
     Ok(ExitCode::SUCCESS)
 }
 
@@ -73,7 +74,7 @@ fn status(ui: &Ui) -> Result<ExitCode> {
     for service in status
         .services
         .iter()
-        .filter(|service| service.name == names::APACHE || service.name == names::PHP_SERVER)
+        .filter(|service| WEB_SERVICES.contains(&service.name.as_str()))
     {
         found = true;
         let line = format!("{}: {}", service.name, service.state_word());

@@ -1,6 +1,6 @@
 [package]
 name = "lambo-gui"
-description = "Native desktop interface for Lambo PHP. Thin view over lambo-core's application API; contains no business logic."
+description = "The Lambo PHP panel: the primary desktop interface. A thin shell over lambo-core; contains no business logic."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,6 +16,11 @@ path = "src/main.rs"
 [dependencies]
 lambo-core.workspace = true
 
+[dev-dependencies]
+# The panel's unit tests build a real installation document on disk, which is
+# what the engine's own tests use `testutil` for.
+lambo-core = { workspace = true, features = ["testutil"] }
+
 # The GUI is Win32, and Win32 is FFI. `unsafe_code = "forbid"` is the right
 # default for the engine and the CLI, so it is overridden here rather than
 # globally - see the note in src/win32.rs.
@@ -27,10 +32,31 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_Controls",
     "Win32_UI_Input_KeyboardAndMouse",
     # `WNDCLASSW` and `RegisterClassW` are gated behind Gdi in windows-sys,
-    # because a window class carries a background brush handle.
+    # because a window class carries a background brush handle. The panel's own
+    # painting - the cards, the strip, the tables - is Gdi too.
     "Win32_Graphics_Gdi",
-    # `SS_NOTIFY`, which is what lets a static control report a click. Without
-    # it the project rows on the Projects screen are inert text.
+    # `DwmSetWindowAttribute`, which rounds the window's corners and gives a dark
+    # frame to a panel whose system preference is dark. Both were the original's.
+    "Win32_Graphics_Dwm",
+    # `GetDpiForWindow`, so the panel is laid out in the display's own pixels.
+    "Win32_UI_HiDpi",
+    # `Shell_NotifyIconW` and the tray's menu, which is how the window lives on
+    # after it is closed. `SHBrowseForFolderW` is the folder picker the
+    # projects page's `Browse…` opens.
+    "Win32_UI_Shell",
+    # `BROWSEINFOW` and the picker's two functions live in the shell's common
+    # submodule, so the folder picker needs this next to `Win32_UI_Shell`.
+    "Win32_UI_Shell_Common",
+    # `CoTaskMemFree`, which frees the item-id list the folder picker returns.
+    "Win32_System_Com",
+    # `RegGetValueW`, for the system's light/dark preference. Lambo has no
+    # setting of its own for this: it follows Windows, which is what a native
+    # application does.
+    "Win32_System_Registry",
+    # `GetLocalTime`, which is where the log's timestamps come from.
+    "Win32_System_SystemInformation",
+    # `SS_LEFT` and `SS_NOPREFIX`, the static-control styles the labels are
+    # created with.
     "Win32_System_SystemServices",
 ] }
 

@@ -288,15 +288,24 @@ pub fn alternatives(port: u16) -> Vec<u16> {
 /// Best-effort by design: `None` means "unknown", and callers degrade to a
 /// plain "port in use" message rather than failing.
 pub fn occupant(port: u16, os: Os) -> Option<String> {
-    let pid = match os {
+    let pid = listening_pid(port, os)?;
+
+    let name = process_name(pid, os)?;
+    Some(format!("{name} (PID {pid})"))
+}
+
+/// The PID of the process listening on `port`, when the platform can tell us.
+///
+/// [`occupant`] is this plus a name. The engine uses the bare PID to decide
+/// *which* of several processes running one of Lambo's programs is the service
+/// it is looking for: the one holding the port it is configured for.
+pub fn listening_pid(port: u16, os: Os) -> Option<u32> {
+    match os {
         Os::Windows => netstat_pid(port),
         Os::MacOs => lsof_pid(port),
         Os::Linux => proc_net_pid(port).or_else(|| lsof_pid(port)),
         Os::OtherUnix => lsof_pid(port),
-    }?;
-
-    let name = process_name(pid, os)?;
-    Some(format!("{name} (PID {pid})"))
+    }
 }
 
 /// Asks `netstat` for the PID listening on `port` (Windows).
@@ -323,11 +332,17 @@ fn lsof_pid(port: u16) -> Option<u32> {
 
 /// Reads the listening PID for `port` from Linux's `/proc/net/tcp`.
 fn proc_net_pid(port: u16) -> Option<u32> {
-    let inode = ["/proc/net/tcp", "/proc/net/tcp6"]
+    // Every listening socket on the port, not just the first: a port number is
+    // not unique to an address. Something listening on `169.254.0.21:8080` -
+    // another container, a service bound to one interface - appears in the same
+    // table as Lambo's own `127.0.0.1:8080`, and its socket may belong to a
+    // process this machine cannot see. Taking only the first match would answer
+    // "unknown" for a port whose owner is perfectly visible a line later.
+    ["/proc/net/tcp", "/proc/net/tcp6"]
         .iter()
         .filter_map(|path| std::fs::read_to_string(path).ok())
-        .find_map(|content| proc_net_tcp_inode(&content, port))?;
-    proc_pid_for_inode(inode)
+        .flat_map(|content| proc_net_tcp_inodes(&content, port))
+        .find_map(proc_pid_for_inode)
 }
 
 /// Scans `/proc/<pid>/fd` for the socket inode, returning its owner.
@@ -452,10 +467,19 @@ pub fn lsof_listener_pid(output: &str, port: u16) -> Option<u32> {
         .next()
 }
 
-/// Finds the socket inode of the listener on `port` in `/proc/net/tcp`.
+/// Finds the socket inode of the first listener on `port` in `/proc/net/tcp`.
 ///
 /// Ports are hexadecimal in that file and the listening state is `0A`.
 pub fn proc_net_tcp_inode(content: &str, port: u16) -> Option<u64> {
+    proc_net_tcp_inodes(content, port).into_iter().next()
+}
+
+/// Finds every socket inode listening on `port` in a `/proc/net/tcp` table.
+///
+/// One port can have several listeners - one per address - so the caller that
+/// has to name the owner of a port asks for all of them and resolves the one it
+/// can actually see.
+pub fn proc_net_tcp_inodes(content: &str, port: u16) -> Vec<u64> {
     let needle = format!(":{port:04X}");
     content
         .lines()
@@ -473,7 +497,7 @@ pub fn proc_net_tcp_inode(content: &str, port: u16) -> Option<u64> {
             // timeout, inode.
             fields.nth(5)?.parse::<u64>().ok()
         })
-        .next()
+        .collect()
 }
 
 /// Parses `tasklist /FO CSV` output into a process name for `pid`.
@@ -632,6 +656,22 @@ httpd    512    thio   10u  IPv6 0xabcdef654321      0t0  TCP *:8080 (LISTEN)
         assert_eq!(proc_net_tcp_inode(content, 8080), Some(12345));
         assert_eq!(proc_net_tcp_inode(content, 3306), Some(67890));
         assert_eq!(proc_net_tcp_inode(content, 8081), None);
+    }
+
+    #[test]
+    fn every_listener_on_a_port_is_offered_to_the_owner_lookup() {
+        // One port, two addresses: the container next door is bound to an
+        // interface this machine can see in the table but not in `/proc`. The
+        // owner lookup has to be able to skip that socket and reach Lambo's
+        // own, which is the second line.
+        let content = "\
+  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 1500FEA9:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 31789 1 0000 100 0
+   1: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000 100 0
+";
+        assert_eq!(proc_net_tcp_inode(content, 8080), Some(31789));
+        assert_eq!(proc_net_tcp_inodes(content, 8080), vec![31789, 12345]);
+        assert!(proc_net_tcp_inodes(content, 8081).is_empty());
     }
 
     #[test]

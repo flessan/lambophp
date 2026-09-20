@@ -13,7 +13,7 @@ use lambo_core::database::{self, Credentials};
 use lambo_core::dbui;
 use lambo_core::process;
 use lambo_core::session;
-use lambo_core::state::names;
+use lambo_core::session::DATABASE_SERVICES;
 use lambo_core::version::VersionSpec;
 
 use crate::error::Result;
@@ -192,7 +192,7 @@ fn status(ui: &Ui, context: &mut lambo_core::session::Context<'_>) -> Result<Exi
     let Some(service) = status
         .services
         .iter()
-        .find(|service| service.name == names::DATABASE)
+        .find(|service| DATABASE_SERVICES.contains(&service.name.as_str()))
     else {
         ui.kv("state", "not started");
         return Ok(ExitCode::SUCCESS);

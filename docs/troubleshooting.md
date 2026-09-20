@@ -132,8 +132,9 @@ whole project.
 lambo db install-ui
 ```
 
-The database manager has no pinned checksum in the shipped catalogue, so this
-fails closed like any other download. Pin one in
+phpMyAdmin - the default manager - is pinned in the shipped catalogue and
+installs out of the box. Adminer carries no digest its publisher exposes, so
+it fails closed like any other unverifiable download: pin one in
 `<home>/config/catalogs/dbui.json`, or install the manager yourself so that
 `<home>/dbui/index.php` exists - Lambo serves whatever is at that path, whether
 through Apache's `/phpmyadmin` alias or with `php -S` on loopback.

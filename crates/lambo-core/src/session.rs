@@ -1,50 +1,225 @@
-//! Starting, stopping and reporting on a project's services.
+//! Starting, stopping and reporting on an installation's services.
 //!
-//! `lambo up` is the command the whole tool is judged on, so its contract is
-//! written down here:
+//! This module is the orchestration layer between the interfaces and the one
+//! service engine: `lambo up` is the stack's essential pass, `lambo down` is its
+//! Stop All, and `lambo status` reads the engines' live state. Nothing here
+//! spawns a process, and nothing here remembers one: what is running is what the
+//! engine says is running, which is why there is no state file left to go stale
+//! (see [`crate::stack`]).
 //!
-//! 1. **Validate before starting.** A broken `lambo.yml`, a missing document
-//!    root or a port that is already taken is reported before anything is
-//!    started, so the user never ends up with a half-running stack and no idea
-//!    which part failed.
-//! 2. **Start in dependency order, stop in reverse.** Database → server →
-//!    database manager, and back again. A page that queries a database must not
-//!    be served before the database answers.
-//! 3. **Never claim a service is up because a process was spawned.** Each
-//!    service is confirmed by observation: a TCP port for the database, an HTTP
-//!    response for the web server. A process that started and immediately died
-//!    is reported as a failure with its log path.
-//! 4. **Record what was started** in `$LAMBO_HOME/data/services.yml` so
-//!    `lambo status` and `lambo down` act on facts rather than guesses, and so
-//!    Lambo never stops a process it did not start.
+//! The three rules the old session was built around still hold, and they are now
+//! the stack's:
 //!
-//! Everything here goes through the service modules ([`crate::apache`],
-//! [`crate::database`], [`crate::dbui`], [`crate::php`]) and takes an explicit
-//! [`Os`], so the same code path runs on Windows and Unix.
+//! 1. **Start in the original's order, stop in its order.** The order comes from
+//!    the installation's own configuration, and both directions are the ones
+//!    the original used.
+//! 2. **A service that cannot be started is installed first.** A component the
+//!    catalogue says is missing is installed before the service is started, so a
+//!    fresh installation boots rather than failing on every card.
+//! 3. **What was started is known.** The engine holds the process handle, so
+//!    `down` stops what Lambo started and never guesses at a PID.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::apache::{self, Plan as ApachePlan};
 use crate::catalog::Catalog;
 use crate::config::{Config, DatabaseKind, ServerKind};
 use crate::database::{self, Database, Plan as DatabasePlan};
-use crate::dbui::{self, Plan as DbUiPlan};
-use crate::download::Downloader;
-use crate::envfile;
+use crate::dbui;
+use crate::download::{Downloader, PanelDownloader, nop_progress};
+use crate::download_cache::DownloadCache;
 use crate::error::{Error, Result};
-use crate::logs;
+use crate::frameworks::{self, CreatedProject, ProjectSink};
+use crate::installer::Installer;
+use crate::logs::LogFn;
 use crate::naming;
+use crate::panel::{PanelConfig, PanelProject, ServiceConf, Vhost};
 use crate::paths::Paths;
 use crate::platform::{Os, Platform};
 use crate::port;
-use crate::process;
 use crate::project::Project;
 use crate::runtime::{self, InstalledRuntime, RuntimeKind};
-use crate::state::{ServiceRecord, State, names};
+use crate::service::{HostService, Service, ServiceConfig};
+use crate::stack::{ComponentInstall, EssentialStep, ManagedService, Stack, StartOutcome};
 use crate::version::VersionSpec;
+use crate::vhost::VhostForm;
 
 /// How long the web server gets to answer its first request.
 pub const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The services of one kind, by the names the configuration gives them.
+///
+/// The panels' names are the catalogue's - `MySQL`, `PostgreSQL`, `Apache` - and
+/// the CLI's `db` and `server` commands ask for these rather than the old
+/// internal labels, which no longer name anything that runs.
+pub const DATABASE_SERVICES: [&str; 2] = ["MySQL", "PostgreSQL"];
+
+/// The web servers, by the names the configuration gives them.
+pub const WEB_SERVICES: [&str; 2] = ["Apache", "Nginx"];
+
+/// The database managers, in the order one is preferred.
+pub const MANAGER_SERVICES: [&str; 3] = ["phpMyAdmin", "Adminer", "pgweb"];
+
+/// Where the database manager is served when the configuration does not say.
+pub const DEFAULT_MANAGER_URL: &str = "http://localhost/phpmyadmin/";
+
+/// The name a project's own server is reported under.
+///
+/// `server.kind: php` runs PHP's built-in development server - one process, no
+/// Apache - and this is the name it carries in the log, in `lambo status` and in
+/// a failure: the same name `php::serve_spec` gives it.
+pub const PROJECT_SERVER: &str = "php-server";
+
+/// The log file a project's own server writes to.
+pub const PROJECT_SERVER_LOG: &str = "server.log";
+
+/// How long the project's own server is given between liveness checks.
+const PROJECT_SERVER_POLL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// The installation's own configuration: the log path a project server writes
+/// to, so a failed start has somewhere to point.
+fn project_server_log(paths: &Paths) -> PathBuf {
+    crate::logs::file(paths, crate::logs::Group::Php, PROJECT_SERVER_LOG)
+}
+
+/// The engine that supervises a project's PHP built-in server.
+///
+/// `server.kind: php` is PHP's own development server: `php -S 127.0.0.1:port -t
+/// docroot`, with the project's generated `php.ini` passed through `PHPRC`. It is
+/// the server for Linux and macOS, where Lambo ships no Apache build, and for any
+/// project that wants the simplest thing that serves PHP.
+///
+/// It goes through [`crate::service::Service`] - the one engine - so its start,
+/// its state callback, its log streaming and its tree kill are the same code the
+/// panel's cards use. Nothing here spawns a process or remembers a PID.
+pub fn project_server_engine(
+    project: &Project,
+    runtime: &InstalledRuntime,
+    context: &Context<'_>,
+) -> Result<Arc<Service>> {
+    let port = project.http_port(&context.config);
+    let spec = crate::php::serve_spec(
+        runtime,
+        port,
+        &project.document_root(),
+        &project_server_log(&context.paths),
+        context.os,
+    )?;
+
+    let mut config = ServiceConfig::new(PROJECT_SERVER, spec.program.clone())
+        .args(spec.args.clone())
+        .port(port);
+    if let Some(directory) = &spec.cwd {
+        config = config.work_dir(directory.clone());
+    }
+    for (key, value) in &spec.env {
+        config = config.env(key.clone(), value.clone());
+    }
+
+    Ok(Service::new(
+        Arc::new(HostService::new()),
+        config,
+        Arc::clone(&context.log),
+    ))
+}
+
+/// The project's own server, when the project runs one and its runtime is
+/// installed.
+///
+/// `None` covers both "this project uses a web server instead" and "PHP is not
+/// installed yet": neither is a service that could be running, and both are
+/// answered by the caller, which knows whether it is reporting or installing.
+pub fn project_server(project: &Project, context: &Context<'_>) -> Result<Option<Arc<Service>>> {
+    if project.server_kind(&context.config) != ServerKind::Php {
+        return Ok(None);
+    }
+    let spec = project.php_spec(&context.config);
+    // Not installed is not an error here: the callers that install PHP
+    // (`lambo up`, `lambo server start`) ask for the runtime themselves, and the
+    // callers that report (`status`, `down`) have nothing to report or stop.
+    let Some(runtime) = runtime::resolve(&context.paths, RuntimeKind::Php, &spec)? else {
+        return Ok(None);
+    };
+    Ok(Some(project_server_engine(project, &runtime, context)?))
+}
+
+/// Boots a project's server and waits until the project's URL answers.
+///
+/// Two failures are distinguished, because they are different problems: the
+/// server that exited is reported at once - its log has the reason, and waiting
+/// the full timeout would turn a broken configuration into a long pause - and a
+/// server that stays alive without answering is reported when the bound runs out.
+/// Returns the URL the project is served on and the line that describes what
+/// happened: a start, or the engine's own `already running (pid N)`.
+fn boot_project_server(
+    project: &Project,
+    runtime: &InstalledRuntime,
+    context: &Context<'_>,
+) -> Result<(String, String)> {
+    let engine = project_server_engine(project, runtime, context)?;
+    let url = naming::local_url(engine.config().port);
+
+    // A server already serving this project's port is not started twice. The
+    // line is the engine's own - `php-server already running (pid N)` - so the
+    // log of a second `lambo up` reads exactly like the log of a second click on
+    // a card.
+    if let Some(pid) = engine.pid_holding_port() {
+        let detail = format!("already running (pid {pid})");
+        (context.log)(&format!("[{PROJECT_SERVER}] {detail}"));
+        return Ok((url, detail));
+    }
+
+    if let Err(error) = engine.start() {
+        return Err(Error::service_failed(
+            PROJECT_SERVER.to_owned(),
+            error.to_string(),
+            ["the PHP runtime is installed but would not run"],
+        ));
+    }
+    let started = format!("started on {url}");
+
+    let deadline = std::time::Instant::now() + HTTP_TIMEOUT;
+    loop {
+        if crate::http::is_up(&url) {
+            return Ok((url, started));
+        }
+        if !engine.running() {
+            return Err(Error::service_failed(
+                PROJECT_SERVER.to_owned(),
+                format!("the server exited without serving {url}"),
+                [format!(
+                    "its output is in {}",
+                    project_server_log(&context.paths).display()
+                )],
+            ));
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(Error::Timeout {
+                service: PROJECT_SERVER.to_owned(),
+                seconds: HTTP_TIMEOUT.as_secs(),
+            });
+        }
+        std::thread::sleep(PROJECT_SERVER_POLL);
+    }
+}
+
+/// Every service a panel can show: the web servers, the PHP worker, the
+/// database engines and the managers.
+///
+/// The interfaces name services for attribution - "which one failed" - and the
+/// names are the configuration's, which is the only place a name comes from now
+/// that the engines are the state.
+pub const ALL_SERVICES: [&str; 8] = [
+    "Apache",
+    "Nginx",
+    "PHP-FPM",
+    "MySQL",
+    "PostgreSQL",
+    "phpMyAdmin",
+    "Adminer",
+    "pgweb",
+];
 
 /// Everything a session needs, resolved once by the caller.
 pub struct Context<'a> {
@@ -60,12 +235,847 @@ pub struct Context<'a> {
     pub downloader: &'a dyn Downloader,
     /// The operating system model to use.
     pub os: Os,
+    /// Where the engine narrates what it does.
+    ///
+    /// The interfaces set this to their own sink - the CLI leaves it silent and
+    /// prints the report instead, the dashboard puts it in its log pane - so the
+    /// service lines a user sees come from the engine and not from a copy of its
+    /// decisions.
+    pub log: LogFn,
 }
 
 impl<'a> Context<'a> {
     /// The operating system, spelled out for call sites that need it.
     pub fn os(&self) -> Os {
         self.os
+    }
+
+    /// The installation directory: where `config.json` and `bin/` live.
+    ///
+    /// The original called this `base_dir` and took it from the working directory.
+    /// Lambo's installation is its home directory, which is what every path in
+    /// the configuration is expanded from.
+    pub fn install_dir(&self) -> PathBuf {
+        self.paths.root().to_path_buf()
+    }
+}
+
+/// An installation's services, and the configuration they came from.
+///
+/// The two belong together: the configuration says which web server is active
+/// and which services are enabled, and the stack holds the engines.
+pub struct Installation {
+    /// The configuration the stack was built from.
+    pub config: PanelConfig,
+    /// The services themselves.
+    pub stack: Stack,
+}
+
+impl Installation {
+    /// The service with this name.
+    pub fn service(&self, name: &str) -> Option<&crate::stack::ManagedService> {
+        self.stack.find(name)
+    }
+
+    /// Whether the installation's catalogue says this component is installed.
+    pub fn installed(&self, name: &str) -> bool {
+        crate::catalog_panel::is_installed(name, self.stack.base_dir())
+    }
+
+    /// The services of one kind, in the configuration's order.
+    pub fn names_of_kind(&self, kind: &str) -> Vec<String> {
+        self.config
+            .services
+            .iter()
+            .filter(|service| service.kind.eq_ignore_ascii_case(kind))
+            .map(|service| service.name.clone())
+            .collect()
+    }
+}
+
+/// Reads the installation and builds its stack.
+///
+/// This is `main.go`'s first two steps: the configuration is loaded from the
+/// installation directory, and every entry becomes a `ManagedService` - with an
+/// engine only when it has an executable.
+pub fn installation(context: &Context<'_>) -> Result<Installation> {
+    let base_dir = context.install_dir();
+    let config = PanelConfig::load(&base_dir)?;
+    let stack = Stack::build(
+        &base_dir,
+        &config,
+        Arc::new(HostService::new()),
+        Arc::clone(&context.log),
+    );
+    Ok(Installation { config, stack })
+}
+
+/// The installer the stack reaches when a component is missing.
+///
+/// A start that finds a component absent installs it through the catalogue, the
+/// same way the panel's own install button does: the same downloader, the same
+/// cache, the same plan. Progress is not reported from here - `up` is a command,
+/// not a bar - and the lines the install writes go to the context's log.
+pub struct CatalogInstaller {
+    installer: Installer,
+}
+
+impl CatalogInstaller {
+    /// An installer for an installation directory.
+    pub fn new(base_dir: &Path, log: LogFn) -> Self {
+        let cache = DownloadCache::new(base_dir, Arc::clone(&log), Box::new(PanelDownloader));
+        Self {
+            installer: Installer::new(base_dir, log, cache, Box::new(PanelDownloader)),
+        }
+    }
+}
+
+impl ComponentInstall for CatalogInstaller {
+    fn install(&mut self, name: &str) -> Result<()> {
+        self.installer.install(name, &nop_progress())?;
+        Ok(())
+    }
+
+    fn install_version(&mut self, name: &str, version: &str) -> Result<()> {
+        self.installer
+            .install_version(name, version, &nop_progress())?;
+        Ok(())
+    }
+}
+
+/// The installation a start runs, with the configurations Lambo generates for
+/// it already written.
+struct Prepared {
+    /// The configuration the stack was built from, generated flags included.
+    installation: Installation,
+    /// The PHP runtime the project asked for, when a project was involved.
+    php: Option<InstalledRuntime>,
+    /// What generating the configurations did, for the report.
+    steps: Vec<Step>,
+}
+
+/// Wraps a configuration in the stack that runs it.
+fn installation_from(config: PanelConfig, context: &Context<'_>) -> Installation {
+    let base_dir = context.install_dir();
+    let stack = Stack::build(
+        &base_dir,
+        &config,
+        Arc::new(HostService::new()),
+        Arc::clone(&context.log),
+    );
+    Installation { config, stack }
+}
+
+/// Builds the installation a command runs, generating the configurations the
+/// services read.
+///
+/// Two documents are written before anything starts, and the entries the stack
+/// runs are pointed at them:
+///
+/// - Apache's configuration, generated for the project's document root and
+///   validated with `httpd -t`; the entry gets `-f <generated>` when it has no
+///   arguments of its own.
+/// - The database's configuration, generated from the plan; the entry gets
+///   `--defaults-file=<generated>` in front of its arguments.
+///
+/// Writing both is what the previous implementation did inside its own start
+/// functions. What the cut-over changed is where the *result* lives: the flags
+/// travel in the service configuration the engine reads, so the process a card
+/// starts, the process `lambo status` reports and the process `lambo down`
+/// stops are one object rather than two views of the same intent.
+///
+/// The PHP runtime is ensured first when a project is given: Apache's
+/// configuration names the module to load, and PHP's built-in server *is* the
+/// runtime.
+///
+/// Which database configuration is written - and whether one is written at all -
+/// is the *project's* decision, resolved against the installation's setting. A
+/// project that says `database.kind: none` gets no `my.cnf`, no credentials and
+/// no database services, which is what `kind: none` means; a project that names
+/// an engine gets that engine's configuration even when the installation's own
+/// default is something else.
+fn prepared_installation(project: Option<&Project>, context: &mut Context<'_>) -> Result<Prepared> {
+    let mut steps = Vec::new();
+    let base_dir = context.install_dir();
+    let mut config = PanelConfig::load(&base_dir)?;
+    let mut php = None;
+
+    if let Some(project) = project {
+        match project.server_kind(&context.config) {
+            ServerKind::Apache => {
+                let runtime = ensure_php(project, context)?;
+                let listen = service_port(&config, "Apache").unwrap_or(80);
+                let generated = prepare_apache(project, &runtime, context, listen)?;
+                if point_apache_at(config.service_mut("Apache"), &generated) {
+                    steps.push(Step::done(
+                        "apache",
+                        format!("generated {}", generated.display()),
+                    ));
+                }
+                php = Some(runtime);
+            }
+            // PHP's own server needs the runtime and nothing else; the caller
+            // starts it.
+            ServerKind::Php => php = Some(ensure_php(project, context)?),
+            // `validate` refuses nginx before anything gets here.
+            ServerKind::Nginx => {}
+        }
+    }
+
+    let database_kind = match project {
+        Some(project) => project.database_kind(&context.config),
+        None => context.config.database.kind,
+    };
+    if database_kind.is_enabled() {
+        let port = service_port(&config, "MySQL").unwrap_or(context.config.database.port);
+        let (database, plan) = database_target(context, database_kind, port)?;
+        let generated = database::write_config(&database, &plan, context.os)?;
+        if point_database_at(config.service_mut("MySQL"), &generated) {
+            steps.push(Step::done(
+                "database",
+                format!("generated {}", generated.display()),
+            ));
+        }
+    } else if project.is_some() {
+        steps.push(Step::skipped("database", "this project does not use one"));
+    }
+
+    let installation = installation_from(config, context);
+    Ok(Prepared {
+        installation,
+        php,
+        steps,
+    })
+}
+
+/// The port a configured service listens on, when it has one.
+fn service_port(config: &PanelConfig, name: &str) -> Option<u16> {
+    config
+        .service(name)
+        .map(|service| service.port)
+        .filter(|port| *port > 0)
+}
+
+/// Generates and validates the Apache configuration for a project.
+///
+/// The executable is discovered, and installed when it is not there yet: the
+/// configuration names the module directory, so it cannot be written before
+/// Apache exists. Validation is Apache's own parser - `httpd -t` - because a
+/// configuration Lambo believes in and Apache does not is worse than no server
+/// at all: it fails on the first request instead of at start.
+fn prepare_apache(
+    project: &Project,
+    php: &InstalledRuntime,
+    context: &Context<'_>,
+    listen: u16,
+) -> Result<PathBuf> {
+    let apache = match apache::discover(&context.paths, context.os) {
+        Some(apache) => apache,
+        None => apache::install(
+            &context.paths,
+            &context.catalog,
+            &VersionSpec::Stable,
+            context.platform,
+            context.downloader,
+            &context.config.sources,
+        )?,
+    };
+
+    let plan = ApachePlan {
+        php: apache::php_module(php, context.os),
+        apache,
+        port: listen,
+        document_root: project.document_root(),
+        project_name: project.name(),
+        allow_override: true,
+        directory_index: vec!["index.php".to_owned(), "index.html".to_owned()],
+        // Mount the database manager into the same site when it is installed,
+        // so `http://localhost/phpmyadmin` works without a second port.
+        aliases: dbui::aliases(&context.paths),
+    };
+
+    let generated = apache::write_config(&context.paths, &plan, context.os)?;
+    apache::validate(&context.paths, &plan.apache, context.os)?;
+    Ok(generated)
+}
+
+/// Points a web server at the configuration Lambo generated for it.
+///
+/// Only an entry with no arguments of its own is pointed: arguments a user put
+/// in `config.json` are a deliberate choice, and the generated configuration is
+/// Lambo's default rather than an override of it. Returns whether the flag was
+/// added.
+fn point_apache_at(service: Option<&mut ServiceConf>, generated: &Path) -> bool {
+    let Some(service) = service else {
+        return false;
+    };
+    if !service.args.is_empty() {
+        return false;
+    }
+    service.args = vec!["-f".to_owned(), generated.display().to_string()];
+    true
+}
+
+/// Puts the generated database configuration first on a database entry.
+///
+/// `--defaults-file` is only honoured as the first argument, so it goes in
+/// front; every argument after it wins over the file, which is how the entry's
+/// own arguments keep their meaning while the settings Lambo computed - the
+/// bind address, the socket, the character set - apply. Returns whether the
+/// flag was added.
+fn point_database_at(service: Option<&mut ServiceConf>, generated: &Path) -> bool {
+    let Some(service) = service else {
+        return false;
+    };
+    if service
+        .args
+        .iter()
+        .any(|argument| argument.starts_with("--defaults-file"))
+    {
+        return false;
+    }
+    service
+        .args
+        .insert(0, format!("--defaults-file={}", generated.display()));
+    true
+}
+
+/// Boots the installation's stack for a project.
+///
+/// The steps are the ones the previous implementation ran, and they keep their
+/// order:
+///
+/// 1. **Validate.** Nothing is generated or started for a project Lambo cannot
+///    make sense of.
+/// 2. **Generate.** The PHP runtime is ensured, then Apache's configuration for
+///    the project's document root and the database's own configuration.
+/// 3. **Start.** The dashboard's Start Stack: the active web server, PHP-FPM,
+///    the database and the database manager, in the configuration's order,
+///    installing whatever the catalogue says is missing.
+/// 4. **Open.** The page the pass ends on.
+pub fn up(project: &Project, context: &mut Context<'_>, open_browser: bool) -> Result<Report> {
+    let mut report = Report::default();
+
+    project.validate()?;
+    report.push(Step::done(
+        "validate",
+        format!("{} ({})", project.name(), project.detection.summary()),
+    ));
+
+    // The project's own choices, resolved once: its server decides what is
+    // started, and its database decides whether a database is provisioned at
+    // all. Both fall back to the installation's configuration when the project
+    // does not say, so a project that says nothing behaves as it always did.
+    let server_kind = project.server_kind(&context.config);
+    let database_kind = project.database_kind(&context.config);
+
+    let prepared = prepared_installation(Some(project), context)?;
+    let php = prepared.php.clone();
+    if let Some(php) = &php {
+        report.push(Step::done("php", format!("PHP {}", php.version)));
+    }
+    for step in prepared.steps {
+        report.push(step);
+    }
+
+    let preparation = prepared.installation;
+    let url = match server_kind {
+        // PHP's built-in server: one process, started and watched by the same
+        // engine the panel's cards use, on the port the project asks for.
+        ServerKind::Php => {
+            let runtime = php.ok_or(Error::RuntimeMissing {
+                kind: "PHP",
+                command: "lambo php install",
+            })?;
+            let (url, detail) = boot_project_server(project, &runtime, context)?;
+            report.push(Step::done(PROJECT_SERVER, detail));
+            url
+        }
+        // Apache (or the active web server): the installation's essential pass,
+        // with the database only when this project uses one.
+        _ => {
+            let names = preparation
+                .config
+                .essential_services_for(database_kind.is_enabled());
+            let mut installer =
+                CatalogInstaller::new(&context.install_dir(), Arc::clone(&context.log));
+            let run = preparation
+                .stack
+                .ensure_essentials_for(&names, &mut installer, &|pause| std::thread::sleep(pause));
+
+            for step in &run.steps {
+                report.push(step_report(step));
+            }
+
+            // Nothing is reported as up until it answers. The essential pass
+            // starts processes; whether the project is *served* is a question
+            // for the project's own URL.
+            let url = run.open_url.clone();
+            if !crate::http::is_up(&url) {
+                crate::http::wait_until_up(&url, HTTP_TIMEOUT).map_err(|error| {
+                    Error::service_failed(
+                        preparation.config.active_web_server().to_owned(),
+                        format!("the server started but never answered {url}"),
+                        [error.to_string()],
+                    )
+                })?;
+            }
+            url
+        }
+    };
+    report.url = Some(url.clone());
+
+    if open_browser {
+        match crate::browser::open(&url, context.os) {
+            Ok(()) => {
+                report.browser_opened = true;
+                report.push(Step::done("browser", "opened in your default browser"));
+            }
+            Err(error) => report.push(Step::skipped("browser", error.to_string())),
+        }
+    }
+
+    Ok(report)
+}
+
+/// One step of `up`, from what the stack did.
+fn step_report(step: &EssentialStep) -> Step {
+    match step {
+        EssentialStep::Started(name) => Step::done(name.clone(), "started"),
+        EssentialStep::InstalledThenStarted(name) => {
+            Step::done(name.clone(), "installed, then started")
+        }
+        EssentialStep::Installed(name) => Step::done(name.clone(), "installed"),
+        EssentialStep::InstallFailed(name) => {
+            Step::failed(name.clone(), "install failed; see the log")
+        }
+        EssentialStep::Skipped(name) => Step::skipped(name.clone(), "not started"),
+        EssentialStep::Opened(name, url) => Step::done(name.clone(), format!("opened {url}")),
+        EssentialStep::Nothing(name) => Step::skipped(name.clone(), "nothing to start"),
+        EssentialStep::ExeMissing(name, path) => Step::failed(
+            name.clone(),
+            format!("executable missing: {}", path.display()),
+        ),
+        EssentialStep::Failed(name, reason) => Step::failed(name.clone(), reason.clone()),
+    }
+}
+
+/// Stops every service of the installation, and the project's own server.
+///
+/// The original's Stop All: configuration order, and one service that will not
+/// stop does not leave the rest running. Two things are added, both because a
+/// command line is not the process that started what it is stopping:
+///
+/// - **The project's own server.** `lambo up` starts `php -S` for a
+///   `server.kind: php` project; that server is not one of the installation's
+///   configured services, so it is stopped explicitly when the project is
+///   known - `lambo down` run inside the project. Its port is released either
+///   way, because the sweep below covers what this installation runs.
+/// - **The sweep.** A run that was killed leaves Lambo's own programs behind
+///   under the installation directory; they are this installation's, they hold
+///   the ports the next start needs, and they are what the original's launch
+///   sweep existed to clear.
+pub fn down(project: Option<&Project>, context: &mut Context<'_>) -> Result<Report> {
+    let installation = installation(context)?;
+    let mut report = Report::default();
+
+    // What is running *before* the stop: `stop_all` says nothing, as the
+    // original's did not, and a service that was already stopped is not a step -
+    // a home where nothing runs must report exactly that.
+    let running: Vec<(String, u32)> = installation
+        .stack
+        .services()
+        .iter()
+        .filter(|service| service.running())
+        .map(|service| (service.name().to_owned(), service.pid().unwrap_or(0)))
+        .collect();
+
+    installation.stack.stop_all();
+
+    for (name, pid) in &running {
+        report.push(Step::done(name.clone(), format!("stopped (pid {pid})")));
+    }
+
+    // The project server, before the sweep: it is named, so the report can say
+    // what it was.
+    if let Some(project) = project {
+        if let Ok(Some(engine)) = project_server(project, context) {
+            if let Some(pid) = engine.pid_holding_port() {
+                engine.stop()?;
+                report.push(Step::done(
+                    PROJECT_SERVER.to_owned(),
+                    format!("stopped (pid {pid})"),
+                ));
+            }
+        }
+    }
+
+    let swept = installation.stack.sweep();
+    if !swept.is_empty() {
+        report.push(Step::done(
+            "sweep",
+            format!("stopped {} leftover process(es)", swept.len()),
+        ));
+    }
+
+    Ok(report)
+}
+
+/// What `lambo status` reports: one card per configured service.
+pub fn status(project: Option<&Project>, context: &mut Context<'_>) -> Result<Status> {
+    let installation = installation(context)?;
+    let mut status = Status::default();
+
+    for service in installation.stack.services() {
+        status.services.push(service_status(service, context.os));
+    }
+
+    if let Some(project) = project {
+        let url = effective_url(&context.paths, project, &context.config, context.os);
+        status.serving = crate::http::is_up(&url);
+        status.url = Some(url);
+
+        // The project's own server, when it has one. It is not a service of the
+        // installation's configuration - there is no card for it, and inventing
+        // one would put a `php -S` process on a page about the machine - but it
+        // is the server this project is served by, and `lambo status` has to
+        // report what is running for the project you asked about.
+        if let Ok(Some(engine)) = project_server(project, context) {
+            // The strict answer: one PHP runtime serves every project, so the
+            // port is what says whether *this* project is being served.
+            let pid = engine.pid_holding_port();
+            status.services.push(ServiceStatus {
+                name: PROJECT_SERVER.to_owned(),
+                recorded: true,
+                running: pid.is_some(),
+                pid,
+                port: Some(engine.config().port),
+                uptime: None,
+                log: Some(project_server_log(&context.paths)),
+                occupant: if pid.is_some() {
+                    None
+                } else {
+                    port::occupant(engine.config().port, context.os)
+                },
+            });
+        }
+    }
+
+    Ok(status)
+}
+
+/// One service, as the status command sees it.
+///
+/// The engine's own answer is the only source: `recorded` means "has an engine",
+/// and `running` is whether that engine holds a live process.
+fn service_status(service: &ManagedService, os: Os) -> ServiceStatus {
+    let port = (service.conf().port > 0).then_some(service.conf().port);
+    let running = service.running();
+
+    ServiceStatus {
+        name: service.name().to_owned(),
+        recorded: service.service().is_some(),
+        running,
+        pid: service.pid(),
+        port,
+        // The engine has no start time: the original's card carried the PID and
+        // the port, and `Running  pid N` is what it said.
+        uptime: None,
+        // The engine keeps its output in the service's own log, which the card
+        // opens rather than names.
+        log: None,
+        occupant: match (running, port) {
+            (false, Some(port)) => port::occupant(port, os),
+            _ => None,
+        },
+    }
+}
+
+/// The port the installation's active web server is on, when something is
+/// listening there.
+pub fn active_http_port(paths: &Paths, _os: Os) -> Option<u16> {
+    let config = PanelConfig::load(paths.root()).ok()?;
+    let port = config.service(config.active_web_server())?.port;
+    if port == 0 || !port::is_listening(port) {
+        return None;
+    }
+    Some(port)
+}
+
+/// Installs, initializes, secures and starts the installation's database.
+///
+/// Returns the detail line the CLI prints. The database is a service of the
+/// installation like any other, so it is started by the engine; the port it
+/// takes is the one the configuration gives it, because that is the port its
+/// client tools are configured with.
+pub fn start_database(
+    context: &mut Context<'_>,
+    project: Option<&Project>,
+    kind: DatabaseKind,
+    port: u16,
+) -> Result<String> {
+    let _ = project;
+    let name = database_service(kind)?;
+    let base_dir = context.install_dir();
+
+    // The server reads the configuration Lambo generates for it, as it did
+    // before: the credentials the plan carries, the socket on Unix and the
+    // character set are all in that file.
+    let (database, plan) = database_target(context, kind, port)?;
+    let generated = database::write_config(&database, &plan, context.os)?;
+    let mut config = PanelConfig::load(&base_dir)?;
+    point_database_at(config.service_mut(&name), &generated);
+    let installation = installation_from(config, context);
+
+    let mut installer = CatalogInstaller::new(&base_dir, Arc::clone(&context.log));
+    let configured = installation
+        .service(&name)
+        .map(|service| service.conf().port)
+        .unwrap_or(0);
+
+    match installation
+        .stack
+        .start_with_install(&name, &mut installer)?
+    {
+        StartOutcome::Started | StartOutcome::InstalledThenStarted | StartOutcome::Installed => {}
+        StartOutcome::ExeMissing(path) => {
+            return Err(Error::RuntimeNotInstalled {
+                kind: "database",
+                name: name.clone(),
+                path,
+            });
+        }
+        StartOutcome::Failed(reason) => {
+            return Err(Error::service_failed(
+                name.clone(),
+                reason,
+                ["the engine could not start it, or could not install it"],
+            ));
+        }
+        StartOutcome::Opened(_) | StartOutcome::Nothing => {
+            return Err(Error::service_failed(
+                name.clone(),
+                "the configuration has no database executable",
+                ["the service entry has no `exe`"],
+            ));
+        }
+    }
+
+    match configured {
+        0 => Ok(format!("{name} is started")),
+        port => Ok(format!("{name} is listening on port {port}")),
+    }
+}
+
+/// Stops the installation's database services.
+pub fn stop_database(context: &mut Context<'_>) -> Result<String> {
+    let installation = installation(context)?;
+    let mut stopped = Vec::new();
+
+    for name in DATABASE_SERVICES {
+        let Some(service) = installation.service(name) else {
+            continue;
+        };
+        if service.service().is_none() {
+            continue;
+        }
+        if service.running() {
+            installation.stack.stop(name)?;
+            stopped.push(name.to_owned());
+        }
+    }
+
+    if stopped.is_empty() {
+        Ok("the database is not running".to_owned())
+    } else {
+        Ok(format!("stopped {}", stopped.join(", ")))
+    }
+}
+
+/// Starts the installation's web server for a project.
+///
+/// "Just the web server" is the active one, run against the configuration
+/// generated for this project's document root. The engines are asked first: a
+/// server that is already running is reported as running rather than started
+/// twice, which is the original's `already running (pid N)`.
+pub fn start_server(project: &Project, context: &mut Context<'_>) -> Result<ServerStart> {
+    project.validate()?;
+
+    // A project that runs PHP's own server has no installation service to ask:
+    // the server is the runtime, started for this project's document root.
+    if project.server_kind(&context.config) == ServerKind::Php {
+        let runtime = ensure_php(project, context)?;
+        let port = project.http_port(&context.config);
+        if let Some(engine) = project_server(project, context)? {
+            if let Some(pid) = engine.pid_holding_port() {
+                return Ok(ServerStart {
+                    port,
+                    message: format!("already running (pid {pid})"),
+                    note: None,
+                });
+            }
+        }
+        let (_, detail) = boot_project_server(project, &runtime, context)?;
+        return Ok(ServerStart {
+            port,
+            message: if detail.starts_with("already running") {
+                detail
+            } else {
+                format!("{PROJECT_SERVER} is serving on port {port}")
+            },
+            note: None,
+        });
+    }
+
+    let preparation = prepared_installation(Some(project), context)?.installation;
+    let active = preparation.config.active_web_server().to_owned();
+    let port = preparation
+        .service(&active)
+        .map(|service| service.conf().port)
+        .filter(|port| *port > 0)
+        .unwrap_or(80);
+
+    if let Some(pid) = preparation
+        .service(&active)
+        .and_then(|service| service.pid())
+    {
+        return Ok(ServerStart {
+            port,
+            message: format!("already running (pid {pid})"),
+            note: None,
+        });
+    }
+
+    let mut installer = CatalogInstaller::new(&context.install_dir(), Arc::clone(&context.log));
+    match preparation
+        .stack
+        .start_with_install(&active, &mut installer)?
+    {
+        StartOutcome::Started | StartOutcome::InstalledThenStarted => {}
+        StartOutcome::Failed(reason) => {
+            return Err(Error::service_failed(
+                active.clone(),
+                reason,
+                ["the engine could not start it"],
+            ));
+        }
+        StartOutcome::ExeMissing(path) => {
+            return Err(Error::RuntimeNotInstalled {
+                kind: "web server",
+                name: active.clone(),
+                path,
+            });
+        }
+        other => {
+            return Err(Error::service_failed(
+                active.clone(),
+                format!("{active} could not be started ({other:?})"),
+                ["the service entry has no executable"],
+            ));
+        }
+    }
+
+    Ok(ServerStart {
+        port,
+        message: format!("{active} is serving on port {port}"),
+        note: None,
+    })
+}
+
+/// Stops the installation's web servers, and the project's own server.
+///
+/// `server.kind: php` starts a server that belongs to the project rather than to
+/// the machine, so `lambo server stop` stops that one when it knows the project;
+/// the installation's servers are stopped either way, which is what makes the
+/// command outside a project still do what it says.
+pub fn stop_server(project: Option<&Project>, context: &mut Context<'_>) -> Result<String> {
+    let installation = installation(context)?;
+    let mut stopped = Vec::new();
+
+    if let Some(project) = project {
+        if let Ok(Some(engine)) = project_server(project, context) {
+            if engine.pid_holding_port().is_some() {
+                engine.stop()?;
+                stopped.push(PROJECT_SERVER.to_owned());
+            }
+        }
+    }
+
+    for name in WEB_SERVICES {
+        let Some(service) = installation.service(name) else {
+            continue;
+        };
+        if service.service().is_some() && service.running() {
+            installation.stack.stop(name)?;
+            stopped.push(name.to_owned());
+        }
+    }
+
+    if stopped.is_empty() {
+        Ok("the web server is not running".to_owned())
+    } else {
+        Ok(format!("stopped {}", stopped.join(", ")))
+    }
+}
+
+/// Opens the installation's database manager.
+///
+/// A manager is a card with no executable, so this is the card's own behaviour:
+/// a component the catalogue says is missing is installed first, and the URL the
+/// configuration gives it is what opens. The name of a project's database is
+/// kept in the signature for the callers that have one; the manager is served at
+/// one address for the whole installation.
+pub fn open_database_ui(
+    context: &mut Context<'_>,
+    name: Option<&str>,
+    open: bool,
+) -> Result<String> {
+    let _ = name;
+    let installation = installation(context)?;
+    let manager = MANAGER_SERVICES
+        .iter()
+        .find(|candidate| installation.service(candidate).is_some())
+        .map(|candidate| (*candidate).to_owned())
+        .ok_or_else(|| {
+            Error::InvalidInput("this configuration has no database manager".to_owned())
+        })?;
+
+    let base_dir = context.install_dir();
+    if crate::catalog_panel::find(&manager).is_some()
+        && !crate::catalog_panel::is_installed(&manager, &base_dir)
+    {
+        // The card's Start button installs a missing manager rather than opening
+        // a page that is not there yet.
+        let mut installer = CatalogInstaller::new(&base_dir, Arc::clone(&context.log));
+        if let Some(service) = installation.service(&manager) {
+            let version = service.conf().active_version.clone();
+            installer.install_version(&manager, &version)?;
+        }
+    }
+
+    let url = installation
+        .service(&manager)
+        .map(|service| service.conf().open_url.clone())
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| DEFAULT_MANAGER_URL.to_owned());
+
+    if open {
+        crate::browser::open(&url, context.os)?;
+    }
+    Ok(url)
+}
+
+/// The configured service a database kind runs as.
+///
+/// Public because attribution needs it: an operation that targets exactly one
+/// service may blame that row when it fails without naming anything, and the
+/// name is the configuration's, not a label this module invented.
+pub fn database_service(kind: DatabaseKind) -> Result<String> {
+    match kind {
+        DatabaseKind::Mariadb | DatabaseKind::Mysql => Ok("MySQL".to_owned()),
+        DatabaseKind::None => Err(Error::InvalidInput(
+            "no database engine is configured; set `database.kind` in lambo.yml".to_owned(),
+        )),
     }
 }
 
@@ -203,165 +1213,6 @@ pub struct Status {
     pub serving: bool,
 }
 
-/// The services Lambo can run, in the order status lists them.
-const STATUS_ORDER: [&str; 4] = [
-    names::DATABASE,
-    names::APACHE,
-    names::PHP_SERVER,
-    names::DBUI,
-];
-
-/// Brings a project's services up.
-///
-/// The steps are fixed and ordered; see the module documentation. On failure
-/// nothing is left unrecorded: whatever did start is in the state file, so
-/// `lambo down` can clean it up.
-pub fn up(project: &Project, context: &mut Context<'_>, open_browser: bool) -> Result<Report> {
-    let mut report = Report::default();
-    let mut state = State::load(&context.paths)?;
-
-    // 1. Validate. Nothing is started until the configuration makes sense.
-    project.validate()?;
-    report.push(Step::done(
-        "validate",
-        format!("{} ({})", project.name(), project.detection.summary()),
-    ));
-
-    // 2. Credentials, so the database is never provisioned without one.
-    let database_kind = project.database_kind(&context.config);
-    if database_kind.is_enabled() && context.config.ensure_credentials() {
-        context.config.save(&context.paths)?;
-        report.push(Step::done("credentials", "generated a database password"));
-    }
-
-    // 3. Ports. Resolved before anything binds, so a conflict is reported as a
-    //    conflict rather than as a server that "failed to start". The web port
-    //    may move to a free one; the database port may not.
-    let ports = preflight(project, context, database_kind)?;
-    match &ports.http_note {
-        // The URL the user is about to be given is not the one they configured.
-        // Saying so is not optional: a silent port change looks like Lambo
-        // ignoring the configuration.
-        Some(note) => report.push(Step::done("ports", note.clone())),
-        None => report.push(Step::done("ports", "all required ports are free")),
-    }
-
-    // 4. PHP.
-    let php = ensure_php(project, context)?;
-    report.push(Step::done("php", format!("PHP {}", php.version)));
-
-    // 5. Database.
-    if database_kind.is_enabled() {
-        let database = bring_up_database(project, context, database_kind)?;
-        report.push(Step::done("database", database));
-        let env = write_env(project, context)?;
-        report.push(Step::done("env", env));
-    } else {
-        report.push(Step::skipped("database", "this project does not use one"));
-    }
-
-    // 6. Web server, on the port that was actually resolved.
-    let serving = bring_up_server(project, context, &php, ports.http, &mut state)?;
-    report.push(Step::done("server", serving));
-
-    state.save(&context.paths)?;
-
-    // 7. Browser, only once the URL actually answers. The URL must be built
-    //    from the resolved port: reporting the configured one after a fallback
-    //    would hand the user an address nothing is listening on.
-    let url = naming::local_url(ports.http);
-    if open_browser {
-        match crate::browser::open(&url, context.os) {
-            Ok(()) => {
-                report.browser_opened = true;
-                report.push(Step::done("browser", "opened in your default browser"));
-            }
-            Err(error) => report.push(Step::skipped("browser", error.to_string())),
-        }
-    }
-    report.url = Some(url);
-
-    Ok(report)
-}
-
-/// The ports a session will actually use, and why any differ from the config.
-///
-/// Only the **web** port is allowed to move. The database port is fixed by
-/// contract: applications connect to it, `.env` records it, and a client the
-/// user already has open would break if it quietly changed. So a database port
-/// conflict is reported as a conflict, while a web port conflict resolves to
-/// the next free port and the new URL is stated.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedPorts {
-    /// The port the web server will bind.
-    pub http: u16,
-    /// The port the configuration asked for.
-    pub http_requested: u16,
-    /// Why the web port moved, ready to show the user. `None` when it did not.
-    pub http_note: Option<String>,
-}
-
-/// Checks that every port the project needs is available.
-///
-/// The web port may move; the database and database-UI ports may not. See
-/// [`ResolvedPorts`].
-pub fn preflight(
-    project: &Project,
-    context: &Context<'_>,
-    database_kind: DatabaseKind,
-) -> Result<ResolvedPorts> {
-    let requested = project.http_port(&context.config);
-    let resolved = port::resolve_listen_port(requested, context.os);
-
-    // A port Lambo could not bind *and* could not move away from is a hard
-    // failure. Guessing a URL Lambo cannot serve would be worse than stopping.
-    if resolved.reason.is_some() && !port::is_free(resolved.port) {
-        return Err(port_conflict_error(
-            resolved.port,
-            resolved.occupant().map(str::to_owned),
-            "server.port",
-        ));
-    }
-
-    let mut fixed: Vec<(u16, &str)> = Vec::new();
-    if database_kind.is_enabled() {
-        fixed.push((project.file.database_port(&context.config), "database.port"));
-    }
-    if dbui::is_installed(&context.paths) {
-        fixed.push((context.config.dbui.port, "dbui.port"));
-    }
-
-    for (number, key) in fixed {
-        if let Err(error) = port::check(number, context.os) {
-            let occupied_by = match &error {
-                Error::PortInUse { occupied_by, .. } => occupied_by.clone(),
-                _ => None,
-            };
-            return Err(port_conflict_error(number, occupied_by, key));
-        }
-    }
-
-    Ok(ResolvedPorts {
-        http: resolved.port,
-        http_requested: requested,
-        http_note: resolved.explanation(context.os),
-    })
-}
-
-/// The failure reported when a port is taken and cannot be worked around.
-fn port_conflict_error(number: u16, occupied_by: Option<String>, key: &str) -> Error {
-    Error::ServiceFailed {
-        service: format!("port {number}"),
-        reason: port::conflict_advice(number, occupied_by.as_deref(), key),
-        causes: vec![
-            format!("`{key}` in lambo.yml or `lambo config set {key} <port>`"),
-            "another application may be using it (Docker, IIS, Skype, …)".to_owned(),
-            "find out with: lambo doctor".to_owned(),
-        ],
-        hint: Some("lambo doctor".to_owned()),
-    }
-}
-
 /// Resolves the project's PHP, installing it when it is missing.
 pub fn ensure_php(project: &Project, context: &mut Context<'_>) -> Result<InstalledRuntime> {
     let spec = project.php_spec(&context.config);
@@ -451,123 +1302,6 @@ pub fn database_target(
     Ok((database, plan))
 }
 
-/// Installs, initializes, secures and starts the database.
-///
-/// With a project, the project's own database is created too. Returns the
-/// detail line the CLI prints.
-pub fn start_database(
-    context: &mut Context<'_>,
-    project: Option<&Project>,
-    kind: DatabaseKind,
-    port: u16,
-) -> Result<String> {
-    if !kind.is_enabled() {
-        return Err(Error::InvalidInput(
-            "no database engine is configured for this project; set `database.kind` in lambo.yml \
-             or `lambo config set database.kind mariadb`"
-                .to_owned(),
-        ));
-    }
-    if context.config.ensure_credentials() {
-        context.config.save(&context.paths)?;
-    }
-
-    let (database, plan) = database_target(context, kind, port)?;
-    let mut state = State::load(&context.paths)?;
-
-    if let Some(record) = state
-        .get(names::DATABASE)
-        .filter(|record| record.is_alive(context.os))
-    {
-        return Ok(format!(
-            "{} already running (pid {})",
-            database.describe(),
-            record.pid
-        ));
-    }
-
-    let initialized = !database::is_initialized(&plan);
-    database::initialize(&database, &plan, context.os)?;
-
-    let record = database::start(&database, &plan, context.os)?;
-    state.record(record.clone());
-    // Saved immediately: if a later step fails, `lambo down` can still stop
-    // what was started.
-    state.save(&context.paths)?;
-    database::wait_until_ready(&plan, database::STARTUP_TIMEOUT)
-        .map_err(|error| database_failure(&database, &plan, error))?;
-
-    if database::secure(&database, &plan, context.os)? {
-        context.config.save(&context.paths)?;
-    }
-
-    if let Some(project) = project {
-        database::create_database(&database, &plan, &project.database_name(), context.os)?;
-    }
-
-    Ok(if initialized {
-        format!(
-            "{} initialized and listening on {}",
-            database.describe(),
-            plan.host_and_port()
-        )
-    } else {
-        format!(
-            "{} listening on {}",
-            database.describe(),
-            plan.host_and_port()
-        )
-    })
-}
-
-/// Stops the database server, and only the database server.
-pub fn stop_database(context: &mut Context<'_>) -> Result<String> {
-    stop_one(context, names::DATABASE, "the database server")
-}
-
-/// Starts the project's web server on its own (`lambo server start`).
-///
-/// The port is resolved first and the URL is confirmed afterwards, so a
-/// reported success always means something is answering on the URL given.
-///
-/// Returns a message and, separately, the port actually bound - the caller has
-/// to show the real URL, and after a port fallback that is not the configured
-/// one.
-pub fn start_server(project: &Project, context: &mut Context<'_>) -> Result<ServerStart> {
-    project.validate()?;
-
-    let mut state = State::load(&context.paths)?;
-    if let Some(record) = recorded_server(&state).filter(|record| record.is_alive(context.os)) {
-        let port = record
-            .port
-            .unwrap_or_else(|| project.http_port(&context.config));
-        return Ok(ServerStart {
-            port,
-            message: format!("already running (pid {})", record.pid),
-            note: None,
-        });
-    }
-
-    // The web port may move; a database port may not, and is not involved here.
-    let requested = project.http_port(&context.config);
-    let resolved = port::resolve_listen_port(requested, context.os);
-    if resolved.reason.is_some() && !port::is_free(resolved.port) {
-        return Err(port_conflict_error(
-            resolved.port,
-            resolved.occupant().map(str::to_owned),
-            "server.port",
-        ));
-    }
-
-    let php = ensure_php(project, context)?;
-    let message = bring_up_server(project, context, &php, resolved.port, &mut state)?;
-    Ok(ServerStart {
-        port: resolved.port,
-        message,
-        note: resolved.explanation(context.os),
-    })
-}
-
 /// What `lambo server start` did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerStart {
@@ -597,339 +1331,7 @@ impl ServerStart {
 /// rather than calling `project.url` directly, or the two will disagree.
 pub fn effective_url(paths: &Paths, project: &Project, config: &Config, os: Os) -> String {
     let configured = project.http_port(config);
-    let state = match State::load(paths) {
-        Ok(state) => state,
-        Err(_) => return naming::local_url(configured),
-    };
-    let bound = recorded_server(&state)
-        .filter(|record| record.is_alive(os))
-        .and_then(|record| record.port);
-    naming::local_url(bound.unwrap_or(configured))
-}
-
-/// The port a running web server actually bound, when one is running.
-///
-/// `None` when no server is up, so callers fall back to the configured port.
-pub fn active_http_port(paths: &Paths, os: Os) -> Option<u16> {
-    let state = State::load(paths).ok()?;
-    recorded_server(&state)
-        .filter(|record| record.is_alive(os))
-        .and_then(|record| record.port)
-}
-
-/// Stops the web server, and only the web server.
-pub fn stop_server(context: &mut Context<'_>) -> Result<String> {
-    let state = State::load(&context.paths)?;
-    match recorded_server(&state).map(|record| record.name.clone()) {
-        Some(name) => stop_one(context, &name, "the web server"),
-        None => Ok("the web server is not running".to_owned()),
-    }
-}
-
-/// The recorded web server, whichever flavour the project uses.
-fn recorded_server(state: &State) -> Option<&ServiceRecord> {
-    [names::APACHE, names::PHP_SERVER]
-        .iter()
-        .find_map(|name| state.get(name))
-}
-
-/// Stops one named service and forgets its record.
-fn stop_one(context: &mut Context<'_>, name: &str, label: &str) -> Result<String> {
-    let mut state = State::load(&context.paths)?;
-    let Some(record) = state.get(name).cloned() else {
-        return Ok(format!("{label} is not running"));
-    };
-    if !record.is_alive(context.os) {
-        state.remove(name);
-        state.save(&context.paths)?;
-        return Ok(format!("{label} was already stopped"));
-    }
-    let detail = match stop_record(context, &record)? {
-        process::StopOutcome::Graceful => "stopped cleanly".to_owned(),
-        process::StopOutcome::Forced => "terminated".to_owned(),
-        process::StopOutcome::AlreadyGone => "was already gone".to_owned(),
-        process::StopOutcome::NotOurs => {
-            "not ours any more: that PID belongs to another process, so nothing was signalled"
-                .to_owned()
-        }
-        process::StopOutcome::Failed(reason) => reason,
-    };
-    state.remove(name);
-    state.save(&context.paths)?;
-    Ok(detail)
-}
-
-/// Installs, initializes, secures and starts the database, then makes sure the
-/// project's own database exists.
-///
-/// Returns the detail line for the report.
-fn bring_up_database(
-    project: &Project,
-    context: &mut Context<'_>,
-    kind: DatabaseKind,
-) -> Result<String> {
-    start_database(
-        context,
-        Some(project),
-        kind,
-        project.file.database_port(&context.config),
-    )
-}
-
-/// Writes the project's `.env`, without touching values it already has.
-fn write_env(project: &Project, context: &Context<'_>) -> Result<String> {
-    let mut env = envfile::ensure_exists(&project.root)?;
-    let changes = env.ensure_all(
-        &project.env_keys(&context.config, &context.config.database.password),
-        false,
-    );
-    if !changes.is_empty() {
-        env.save()?;
-    }
-    Ok(if changes.written.is_empty() {
-        format!(".env already had what it needs ({})", env.path.display())
-    } else {
-        format!(".env: wrote {}", changes.written.join(", "))
-    })
-}
-
-/// Starts whichever server the project uses and confirms it serves.
-fn bring_up_server(
-    project: &Project,
-    context: &mut Context<'_>,
-    php: &InstalledRuntime,
-    port: u16,
-    state: &mut State,
-) -> Result<String> {
-    match project.server_kind(&context.config) {
-        ServerKind::Apache => start_apache(project, context, php, port, state),
-        ServerKind::Php => start_php_server(project, context, php, port, state),
-        ServerKind::Nginx => Err(Error::Unsupported("nginx")),
-    }
-}
-
-/// Starts Apache with a generated configuration.
-fn start_apache(
-    project: &Project,
-    context: &mut Context<'_>,
-    php: &InstalledRuntime,
-    listen: u16,
-    state: &mut State,
-) -> Result<String> {
-    let apache = match apache::discover(&context.paths, context.os) {
-        Some(apache) => apache,
-        None => apache::install(
-            &context.paths,
-            &context.catalog,
-            &VersionSpec::Stable,
-            context.platform,
-            context.downloader,
-            &context.config.sources,
-        )?,
-    };
-
-    let plan = ApachePlan {
-        php: apache::php_module(php, context.os),
-        apache,
-        port: listen,
-        document_root: project.document_root(),
-        project_name: project.name(),
-        allow_override: true,
-        directory_index: vec!["index.php".to_owned(), "index.html".to_owned()],
-        // Mount the database manager into the same site when it is installed,
-        // so `http://localhost/phpmyadmin` works without a second port.
-        aliases: dbui::aliases(&context.paths),
-    };
-
-    apache::write_config(&context.paths, &plan, context.os)?;
-    apache::validate(&context.paths, &plan.apache, context.os)?;
-
-    let record = apache::start(&context.paths, &plan, context.os)?;
-    state.record(record.clone());
-    state.save(&context.paths)?;
-
-    let url = naming::local_url(listen);
-    // Apache is judged by the bounded timeout alone. `httpd -f` daemonises on
-    // Unix, so `record.pid` may be a parent that exits normally; failing fast
-    // on that would report a healthy Apache as dead. See `wait_for_service`.
-    wait_for_http(&url, HTTP_TIMEOUT).map_err(|error| Error::ServiceFailed {
-        service: "Apache".to_owned(),
-        reason: "the server started but never answered an HTTP request".to_owned(),
-        causes: vec![
-            format!(
-                "the error log may say why: {}",
-                logs::apache(&context.paths).display()
-            ),
-            error.to_string(),
-            "a PHP fatal error during start-up can also stop the first response".to_owned(),
-        ],
-        hint: Some("lambo logs apache".to_owned()),
-    })?;
-
-    Ok(format!("Apache listening on {url}"))
-}
-
-/// Starts PHP's built-in server, used when Apache is not available.
-fn start_php_server(
-    project: &Project,
-    context: &mut Context<'_>,
-    php: &InstalledRuntime,
-    listen: u16,
-    state: &mut State,
-) -> Result<String> {
-    let log = logs::file(&context.paths, logs::Group::Php, "server.log");
-    let spec = crate::php::serve_spec(php, listen, &project.document_root(), &log, context.os)?;
-    let mut child = process::spawn(&spec, context.os)?;
-    let pid = child.id();
-    // The handle is kept, not dropped: `php -S` *is* the server, so whether
-    // this handle has exited is direct evidence that the server died. Dropping
-    // it would cost the exit code and force a blind 30-second wait.
-    let mut record = ServiceRecord::new(names::PHP_SERVER, pid, spec.render())
-        .with_port(listen)
-        .with_project(&project.root)
-        .with_log(&log);
-    if let Some(identity) = process::identity_settled(
-        pid,
-        context.os,
-        &spec.program,
-        std::time::Duration::from_millis(500),
-    ) {
-        record = record.with_identity(&identity);
-    }
-    state.record(record.clone());
-    state.save(&context.paths)?;
-
-    let url = naming::local_url(listen);
-    wait_for_service(
-        "the PHP development server",
-        &record,
-        &url,
-        HTTP_TIMEOUT,
-        context.os,
-        Some(&mut child),
-    )
-    .map_err(|error| match error {
-        // A dead process is already reported completely: the exit, the URL and
-        // the log. Re-wrapping it would bury the one fact that matters.
-        Error::ServiceFailed { .. } => error,
-        // Alive but not answering within the bound. This keeps the wording it
-        // has always had; only the dead-process case is new.
-        error => Error::ServiceFailed {
-            service: "the PHP development server".to_owned(),
-            reason: "the server started but never answered an HTTP request".to_owned(),
-            causes: vec![format!("log: {}", log.display()), error.to_string()],
-            hint: Some("lambo logs php".to_owned()),
-        },
-    })?;
-
-    Ok(format!(
-        "PHP {} built-in server listening on {url}",
-        php.version
-    ))
-}
-
-/// How a process ended, as far as the OS will tell us.
-fn exit_detail(status: std::process::ExitStatus) -> String {
-    match status.code() {
-        Some(code) => format!("the process exited with code {code}"),
-        // No code means it was killed by a signal (Unix) rather than exiting.
-        None => "the process was terminated by a signal".to_owned(),
-    }
-}
-
-/// The `lambo logs` group that shows a service's own output.
-fn log_hint(name: &str) -> String {
-    match name {
-        names::APACHE => "lambo logs apache",
-        names::PHP_SERVER => "lambo logs php",
-        names::DATABASE => "lambo logs database",
-        _ => "lambo logs",
-    }
-    .to_owned()
-}
-
-/// Builds the failure for a server that died before it could answer.
-///
-/// This is the case that must not be reported as a timeout: nothing is coming,
-/// and the reason is already in the log.
-fn startup_exited(service: &str, record: &ServiceRecord, url: &str, detail: &str) -> Error {
-    let mut causes = vec![detail.to_owned(), format!("it was expected to serve {url}")];
-    if let Some(log) = &record.log {
-        causes.push(format!("the log may say why: {}", log.display()));
-    }
-    if !record.command.is_empty() {
-        causes.push(format!("it was started with: {}", record.command));
-    }
-    Error::ServiceFailed {
-        service: service.to_owned(),
-        reason: "the server exited before it answered an HTTP request".to_owned(),
-        causes,
-        hint: Some(log_hint(&record.name)),
-    }
-}
-
-/// Waits until `url` answers, giving up as soon as the server exits.
-///
-/// A process that has already terminated will never answer, so polling it for
-/// the whole [`HTTP_TIMEOUT`] leaves the user watching a frozen interface for
-/// half a minute before being told something that was known in the first
-/// second. Liveness is read from the recorded identity - the same PID-reuse-safe
-/// test `lambo status` and the dashboard use - so the health wait and the status
-/// report cannot disagree about whether the process is still Lambo's.
-///
-/// `child` is the handle when the caller still holds one; polling it yields an
-/// exit code, which is unavailable once the handle is dropped.
-///
-/// A server that stays alive but never answers still waits the full `timeout`.
-/// That is deliberate: slow start-ups are legitimate, and shortening the bound
-/// to make failures fast would turn a working-but-slow server into a false
-/// failure. Only a *dead* process fails early.
-///
-/// Callers must only pass a record for a process that is itself the server.
-/// Apache is excluded: `httpd -f` daemonises on Unix, so the recorded PID is a
-/// parent that exits normally, and treating that as a failure would be wrong.
-pub fn wait_for_service(
-    service: &str,
-    record: &ServiceRecord,
-    url: &str,
-    timeout: std::time::Duration,
-    os: Os,
-    mut child: Option<&mut std::process::Child>,
-) -> Result<()> {
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        // The handle answers first, because it knows the exit code. Without
-        // one, fall back to the identity-checked liveness test.
-        let exited = match child.as_mut() {
-            Some(handle) => match handle.try_wait() {
-                Ok(Some(status)) => Some(exit_detail(status)),
-                _ => None,
-            },
-            None => None,
-        }
-        .or_else(|| (!record.is_alive(os)).then(|| "the process is no longer running".to_owned()));
-
-        if let Some(detail) = exited {
-            return Err(startup_exited(service, record, url, &detail));
-        }
-
-        // Bound per iteration, not held across them: the timeout message
-        // should describe what the URL did most recently, and there is always
-        // a probe result by the time the deadline is checked.
-        let last = match crate::http::get(url, crate::http::DEFAULT_TIMEOUT.min(timeout)) {
-            Ok(response) if response.is_healthy() => return Ok(()),
-            Ok(response) => format!("HTTP {}", response.status),
-            Err(error) => error.to_string(),
-        };
-
-        if std::time::Instant::now() >= deadline {
-            return Err(Error::Timeout {
-                service: format!("{url} (last error: {last})"),
-                seconds: timeout.as_secs(),
-            });
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
+    naming::local_url(active_http_port(paths, os).unwrap_or(configured))
 }
 
 /// Waits until a URL answers, polling.
@@ -948,577 +1350,470 @@ pub fn wait_for_http(url: &str, timeout: std::time::Duration) -> Result<()> {
     })
 }
 
-/// Wraps a database start failure with the causes that actually matter.
-fn database_failure(database: &Database, plan: &DatabasePlan, error: Error) -> Error {
-    let _ = database;
-    Error::ServiceFailed {
-        service: "the database server".to_owned(),
-        reason: error.to_string(),
-        causes: vec![
-            format!("the error log may say why: {}", plan.log.display()),
-            "the data directory may be incomplete; `lambo db install --force` rebuilds it"
-                .to_owned(),
-            "another MySQL-compatible server may already own the port".to_owned(),
-        ],
-        hint: Some("lambo logs database".to_owned()),
-    }
-}
-
-/// Stops every service Lambo started, in reverse start order.
-///
-/// Processes that are already gone are dropped from the state file, and nothing
-/// else on the machine is touched.
-pub fn down(context: &mut Context<'_>) -> Result<Report> {
-    let mut report = Report::default();
-    let mut state = State::load(&context.paths)?;
-
-    for record in state
-        .ordered_for_shutdown()
-        .into_iter()
-        .cloned()
-        .collect::<Vec<_>>()
-    {
-        if !record.is_alive(context.os) {
-            state.remove(&record.name);
-            report.push(Step::skipped(record.name.clone(), "already stopped"));
-            continue;
-        }
-
-        let outcome = stop_record(context, &record)?;
-        let detail = match outcome {
-            process::StopOutcome::Graceful => "stopped cleanly".to_owned(),
-            process::StopOutcome::Forced => "terminated".to_owned(),
-            process::StopOutcome::AlreadyGone => "was already gone".to_owned(),
-            process::StopOutcome::NotOurs => {
-                "stale record: that PID belongs to another process, so nothing was signalled"
-                    .to_owned()
-            }
-            process::StopOutcome::Failed(reason) => reason,
-        };
-        state.remove(&record.name);
-        report.push(Step::done(record.name.clone(), detail));
-    }
-
-    state.prune_dead(context.os);
-    state.save(&context.paths)?;
-    Ok(report)
-}
-
-/// Stops one recorded service using the shutdown path that fits it.
-fn stop_record(context: &mut Context<'_>, record: &ServiceRecord) -> Result<process::StopOutcome> {
-    match record.name.as_str() {
-        names::DATABASE => {
-            let kind = context.config.database.kind;
-            match database::discover(&context.paths, kind, context.os) {
-                Some(database) => {
-                    let plan = DatabasePlan::from_config(&context.paths, &context.config.database)
-                        .with_socket(context.os, &context.paths);
-                    database::stop(&database, &plan, record, context.os)
-                }
-                None => process::stop(record.pid, context.os, None, database::SHUTDOWN_TIMEOUT),
-            }
-        }
-        names::APACHE => match apache::discover(&context.paths, context.os) {
-            Some(apache) => apache::stop(&context.paths, &apache, record, context.os),
-            None => process::stop(record.pid, context.os, None, apache::graceful_timeout()),
-        },
-        _ => process::stop(
-            record.pid,
-            context.os,
-            None,
-            std::time::Duration::from_secs(10),
-        ),
-    }
-}
-
-/// Reports what Lambo believes is running, corrected by what is actually there.
-pub fn status(project: Option<&Project>, context: &mut Context<'_>) -> Result<Status> {
-    let mut state = State::load(&context.paths)?;
-    let pruned = state.prune_dead(context.os);
-    if pruned {
-        state.save(&context.paths)?;
-    }
-
-    let mut status = Status::default();
-    for name in STATUS_ORDER {
-        status.services.push(service_status(context, &state, name));
-    }
-
-    if let Some(project) = project {
-        // The port actually bound, not the configured one - after a fallback
-        // they differ, and `status` claiming `serving` on the configured URL
-        // while the server listens elsewhere would be a false report.
-        let url = effective_url(&context.paths, project, &context.config, context.os);
-        status.serving = crate::http::is_up(&url);
-        status.url = Some(url);
-    }
-
-    Ok(status)
-}
-
-/// Builds the observed status of one service.
-fn service_status(context: &Context<'_>, state: &State, name: &str) -> ServiceStatus {
-    let record = state.get(name);
-    let running = record.is_some_and(|record| record.is_alive(context.os));
-    let port = record.and_then(|record| record.port);
-    ServiceStatus {
-        occupant: port.and_then(|port| port::occupant(port, context.os)),
-        uptime: record
-            .filter(|_| running)
-            .map(|record| record.uptime_text()),
-        pid: record.map(|record| record.pid),
-        log: record.and_then(|record| record.log.clone()),
-        name: name.to_owned(),
-        recorded: record.is_some(),
-        running,
-        port,
-    }
-}
-
-/// Starts the database manager for `lambo db open`.
-///
-/// The manager is started only when it is not already serving, and the URL it
-/// opens carries the connection details - never the password.
-pub fn open_database_ui(
-    context: &mut Context<'_>,
-    database_name: Option<&str>,
-    open: bool,
-) -> Result<String> {
-    let ui = dbui::discover(&context.paths, context.os).ok_or(Error::RuntimeMissing {
-        kind: "database manager",
-        command: "lambo db install-ui",
-    })?;
-
-    // When the site is up, Apache is already serving the manager at
-    // `/phpmyadmin` through the alias, so there is nothing to start and no
-    // second port for the user to learn. The standalone server below is the
-    // fallback for when the project is not running.
-    if let Some(http_port) = active_http_port(&context.paths, context.os) {
-        let url = dbui::open_url_at(
-            http_port,
-            context.config.database.port,
-            database_name,
-            &context.config.database.username,
-        );
-        if open {
-            crate::browser::open(&url, context.os)?;
-        }
-        return Ok(url);
-    }
-
-    let mut state = State::load(&context.paths)?;
-    let already = state
-        .get(names::DBUI)
-        .filter(|record| record.is_alive(context.os))
-        .and_then(|record| record.port);
-
-    let port = match already {
-        Some(port) => port,
-        None => {
-            let plan = DbUiPlan::new(
-                &context.paths,
-                &ui,
-                context.config.dbui.port,
-                context.config.database.port,
-                context.config.database.username.clone(),
-                context.os,
-                context.config.dbui.kind.clone(),
-            )?;
-            let record = dbui::start(&plan, context.os)?;
-            state.record(record.clone());
-            state.save(&context.paths)?;
-            crate::http::wait_until_up(
-                &format!("http://127.0.0.1:{}/", plan.port),
-                std::time::Duration::from_secs(15),
-            )
-            .map_err(|_| Error::Timeout {
-                service: "the database manager".to_owned(),
-                seconds: 15,
-            })?;
-            plan.port
-        }
-    };
-
-    let url = dbui::open_url(
-        port,
-        context.config.database.port,
-        database_name,
-        &context.config.database.username,
-    );
-    if open {
-        crate::browser::open(&url, context.os)?;
-    }
-    Ok(url)
-}
-
 /// The runtime a service would use, for `lambo doctor`.
 pub fn active_runtime(paths: &Paths, kind: RuntimeKind) -> Option<InstalledRuntime> {
     runtime::active(paths, kind).ok().flatten()
 }
 
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+/// The installation's document, loaded for editing.
+///
+/// This is the analogue of the original's `app.cfg`, and it holds everything the two
+/// pages that write to it need: the projects, their virtual hosts and the
+/// settings that say where the managed files go. A change is recorded here and
+/// persisted by the method that made it; the hosts file and the server
+/// configurations are rewritten by [`PanelBook::apply`], which is the original's
+/// "Apply to System" split into the two halves the pages actually use - the
+/// projects page applies as part of creating or deleting a project, the
+/// virtual-hosts page saves first and applies when the user asks.
+pub struct PanelBook<'a> {
+    base_dir: &'a Path,
+    config: PanelConfig,
+}
+
+impl<'a> PanelBook<'a> {
+    /// Loads the document of an installation.
+    ///
+    /// A missing document is written with the installation's defaults, which is
+    /// what the panel does when it starts.
+    pub fn load(base_dir: &'a Path) -> Result<Self> {
+        Ok(Self {
+            base_dir,
+            config: PanelConfig::load(base_dir)?,
+        })
+    }
+
+    /// The projects the document holds, in the order they were created.
+    pub fn projects(&self) -> &[PanelProject] {
+        &self.config.projects
+    }
+
+    /// The virtual hosts the document holds, in the order they were added.
+    pub fn vhosts(&self) -> &[Vhost] {
+        &self.config.vhosts
+    }
+
+    /// The configuration a caller needs to read (the settings, mostly).
+    pub fn config(&self) -> &PanelConfig {
+        &self.config
+    }
+
+    /// Persists the document.
+    ///
+    /// The original discarded `SaveConfig`'s result in every handler that was
+    /// not creating a project. That is a deviation this port makes on purpose:
+    /// an edit the user made, and that the interface believed it saved, must not
+    /// disappear silently - so the error travels back to the caller, which logs
+    /// it, instead of being thrown away.
+    pub fn save(&self) -> Result<()> {
+        self.config.save(self.base_dir)
+    }
+
+    /// Moves a project and its domains to a new domain.
+    ///
+    /// Both halves move together: the project row the projects page lists, and
+    /// every virtual host on the old domain. Leaving either behind is how a
+    /// project ends up answering on a domain the list does not show.
+    /// Returns the updated project, or `None` when no project has that name.
+    pub fn set_project_domain(&mut self, name: &str, domain: &str) -> Result<Option<PanelProject>> {
+        // The rule - which rows move, and what happens to the hosts - is
+        // `vhost::move_project_domain`'s, so the page, the CLI and any future
+        // caller cannot disagree about it. This only persists the result.
+        let moved = crate::vhost::move_project_domain(
+            &mut self.config.projects,
+            &mut self.config.vhosts,
+            name,
+            domain,
+        );
+        if moved.is_some() {
+            self.save()?;
+        }
+        Ok(moved)
+    }
+
+    /// Saves a virtual host: the row being edited, or a new one.
+    ///
+    /// The original's Save handler, exactly: editing keeps the enabled flag of
+    /// the row it replaces, so a disabled host is not enabled by editing it, and
+    /// a new host is enabled. Nothing is applied here - the page's own button
+    /// does that. Returns the row as it was stored, flag included.
+    pub fn save_vhost(&mut self, current: Option<&str>, vhost: Vhost) -> Result<Vhost> {
+        let stored = crate::vhost::store_vhost(&mut self.config.vhosts, current, vhost);
+        self.save()?;
+        Ok(stored)
+    }
+
+    /// Makes a web server the installation's active one.
+    ///
+    /// The original's picker, which stopped at writing the setting and saving
+    /// the document; the server that has to go is the stack's business
+    /// ([`crate::stack::Stack::stop_other_web_servers`]), and so is the line
+    /// that says which one was picked.
+    pub fn set_active_web_server(&mut self, choice: &str) -> Result<()> {
+        self.config.settings.active_web_server = choice.to_owned();
+        self.save()
+    }
+
+    /// Records which build of a component the installation runs.
+    ///
+    /// Returns whether a service of that name is in the document. The install
+    /// itself is [`crate::installer::Installer::set_active_variant`]'s; this is
+    /// what the original's version picker wrote *after* a successful install, and
+    /// saving it is what makes the choice outlive the window - the version menu's
+    /// check mark and a half-finished component's reinstall both read it. The
+    /// original guarded the write with an index bounds check and dropped
+    /// `SaveConfig`'s error; the first is the `Ok(false)` here, and the second is
+    /// [`PanelBook::save`](Self::save)'s documented deviation.
+    pub fn set_active_version(&mut self, name: &str, version: &str) -> Result<bool> {
+        let Some(service) = self
+            .config
+            .services
+            .iter_mut()
+            .find(|service| service.name == name)
+        else {
+            return Ok(false);
+        };
+        service.active_version = version.to_owned();
+        self.save()?;
+        Ok(true)
+    }
+
+    /// Removes a virtual host by domain, returning whether it was there.
+    pub fn remove_vhost(&mut self, domain: &str) -> Result<bool> {
+        if !crate::vhost::remove_vhost(&mut self.config.vhosts, domain) {
+            return Ok(false);
+        }
+        self.save()?;
+        Ok(true)
+    }
+}
+
+impl ProjectSink for PanelBook<'_> {
+    fn projects(&self) -> &[PanelProject] {
+        &self.config.projects
+    }
+
+    fn record(&mut self, project: &PanelProject, vhost: &Vhost) -> Result<()> {
+        self.config.projects.push(project.clone());
+        self.config.vhosts.push(vhost.clone());
+        self.save()
+    }
+
+    fn remove(&mut self, name: &str) -> Result<bool> {
+        let Some(index) = self
+            .config
+            .projects
+            .iter()
+            .position(|project| project.name == name)
+        else {
+            return Ok(false);
+        };
+        let domain = self.config.projects.remove(index).domain;
+        // Every vhost on the domain, not only the one the project registered: a
+        // hand-added vhost is the same site, and leaving it behind would serve a
+        // directory that no longer exists. The rule is the page's own.
+        crate::vhost::remove_vhost(&mut self.config.vhosts, &domain);
+        self.save()?;
+        Ok(true)
+    }
+
+    fn apply(&mut self) -> Result<()> {
+        crate::vhost::apply(self.base_dir, &self.config)
+    }
+}
+
+/// Deletes a project: its directory, its record, and its domains.
+///
+/// Returns whether there was a project to delete. A deletion does not fail
+/// visibly - the directory, the document and the hosts file are each reported
+/// through the log, as the original reported them - because the user asked for
+/// the project to be gone, and a locked file must not make that look like a
+/// refusal.
+pub fn delete_project(base_dir: &Path, name: &str, log: LogFn) -> Result<bool> {
+    let mut book = PanelBook::load(base_dir)?;
+    Ok(frameworks::delete_project(&mut book, base_dir, name, &log))
+}
+
+/// The virtual hosts the installation publishes.
+pub fn vhosts(base_dir: &Path) -> Result<Vec<Vhost>> {
+    Ok(PanelBook::load(base_dir)?.vhosts().to_vec())
+}
+
+/// Saves the virtual-host form the page holds.
+///
+/// The form is validated by the page's own rules ([`crate::vhost::read_vhost_form`]),
+/// so `lambo vhosts` and the virtual-hosts page accept and refuse exactly the
+/// same input. `current` names the row being edited, if there is one: editing
+/// keeps that row's enabled flag, and a new host is enabled.
+pub fn save_vhost(
+    base_dir: &Path,
+    current: Option<&str>,
+    form: &VhostForm,
+    log: LogFn,
+) -> Result<Vhost> {
+    let vhost = match crate::vhost::read_vhost_form(form) {
+        Ok(vhost) => vhost,
+        Err(error) => {
+            // The page's own prefix for a rejection, so the log reads the same
+            // whichever interface asked.
+            log(&format!("vhost save: {error}"));
+            return Err(error);
+        }
+    };
+
+    let mut book = PanelBook::load(base_dir)?;
+    match book.save_vhost(current, vhost) {
+        // The row as stored, with the enabled flag the save decided.
+        Ok(stored) => Ok(stored),
+        Err(error) => {
+            log(&format!("vhost save: {error}"));
+            Err(error)
+        }
+    }
+}
+
+/// Removes a virtual host by domain, returning whether it was there.
+///
+/// The document is saved; nothing is applied, which is the page's behaviour -
+/// its own button publishes a change.
+pub fn delete_vhost(base_dir: &Path, domain: &str, log: LogFn) -> Result<bool> {
+    let mut book = PanelBook::load(base_dir)?;
+    book.remove_vhost(domain).map_err(|error| {
+        log(&format!("vhost delete: {error}"));
+        error
+    })
+}
+
+/// Publishes the document: the hosts file, Apache's include, nginx's sites.
+///
+/// The virtual-hosts page's "Apply to System". The original logged a failure and
+/// stopped there; the error is returned here as well, so `lambo` can exit
+/// non-zero for a script while the log still reads exactly as it did.
+pub fn apply_vhosts(base_dir: &Path, log: LogFn) -> Result<()> {
+    let mut book = PanelBook::load(base_dir)?;
+    match book.apply() {
+        Ok(()) => {
+            log("vhosts applied \u{2014} hosts file + Apache/Nginx configs updated");
+            Ok(())
+        }
+        Err(error) => {
+            log(&format!("apply vhosts: {error}"));
+            log("  \u{2192} if 'access denied', relaunch Lambo PHP as administrator");
+            Err(error)
+        }
+    }
+}
+
+/// Moves a project to a new domain and publishes it.
+///
+/// The change touches three things at once - the project row, its virtual host,
+/// and the files those are written from - so it goes through the one
+/// implementation that owns all three. Returns whether a project of that name
+/// was registered.
+pub fn set_project_domain(base_dir: &Path, name: &str, domain: &str, log: LogFn) -> Result<bool> {
+    let mut book = PanelBook::load(base_dir)?;
+    let Some(project) = book.set_project_domain(name, domain)? else {
+        return Ok(false);
+    };
+
+    if let Err(error) = book.apply() {
+        log(&format!("apply vhosts: {error}"));
+        log("  \u{2192} run Lambo PHP as administrator for hosts-file writes to work");
+        return Err(error);
+    }
+
+    log(&format!(
+        "project '{}' now answers on http://{}",
+        project.name, project.domain
+    ));
+    log("NOTE: Apache needs a restart to pick up the changed vhost \u{2014} click 'Restart Stack'");
+    Ok(true)
+}
+
+/// Creates a project from what the user asked for.
+///
+/// The steps the projects page takes before the scaffold, in its own order: the
+/// framework is looked up by name, the project name is required and is slugified
+/// (`My Shop!` becomes `my-shop`), and an empty domain becomes the project's own
+/// `.test` name. Both interfaces call this, so `lambo frameworks create` and the
+/// projects page behave identically and report the same errors.
+pub fn create_project(
+    base_dir: &Path,
+    framework_name: &str,
+    name: &str,
+    domain: &str,
+    log: LogFn,
+) -> Result<CreatedProject> {
+    if framework_name.is_empty() {
+        return Err(Error::InvalidInput(
+            "projects: pick a framework first".to_owned(),
+        ));
+    }
+    let framework = frameworks::framework_by_name(framework_name).ok_or_else(|| {
+        Error::InvalidInput(format!("projects: unknown framework {framework_name}"))
+    })?;
+
+    // The original's `slugify`, which leaves nothing behind for a name made entirely
+    // of punctuation - and that is what rejects it below.
+    let name = frameworks::project_slug(name);
+    if name.is_empty() {
+        return Err(Error::InvalidInput(
+            "projects: project name required".to_owned(),
+        ));
+    }
+
+    let mut book = PanelBook::load(base_dir)?;
+    frameworks::create_project(&mut book, base_dir, framework, &name, domain, &log)
+}
+
+/// Loads an existing folder as a project, detecting what it is.
+///
+/// The panel's `Open Project` goes through here, so what the dashboard loads
+/// and what `lambo init` would conclude about the same folder cannot disagree.
+pub fn adopt_project(
+    base_dir: &Path,
+    folder: &Path,
+    log: LogFn,
+) -> Result<frameworks::AdoptedProject> {
+    let mut book = PanelBook::load(base_dir)?;
+    frameworks::adopt_project(&mut book, base_dir, folder, &log)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::download::LocalDownloader;
+    use crate::config::Config;
     use crate::testutil::TempDir;
 
     fn context(temp: &TempDir, config: Config) -> Context<'static> {
+        static DOWNLOADER: crate::download::SystemDownloader = crate::download::SystemDownloader;
+        let paths = temp.home();
+        paths.ensure_layout().expect("the layout");
         Context {
-            paths: temp.home(),
+            paths,
             config,
-            catalog: Catalog::embedded().unwrap(),
+            catalog: crate::catalog::Catalog::embedded().expect("the embedded catalogue"),
             platform: Platform::host(),
-            // `LocalDownloader` only handles file:// URLs, so nothing in a test
-            // can reach the network by accident.
-            downloader: &LocalDownloader,
+            downloader: &DOWNLOADER,
             os: Os::host(),
+            log: crate::logs::nop_log(),
         }
     }
 
-    /// A project with a document root and an entry point.
-    fn plain_project(temp: &TempDir, extra: &str) -> Project {
-        let root = temp.join("shop");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("index.php"), "<?php echo 'hi';\n").unwrap();
-        std::fs::write(
-            root.join("lambo.yml"),
-            format!("server:\n  document_root: .\n{extra}"),
-        )
-        .unwrap();
-        Project::load(&root).unwrap()
+    #[test]
+    fn the_installation_directory_is_the_home() {
+        let temp = TempDir::new();
+        let context = context(&temp, Config::default());
+        assert_eq!(context.install_dir(), context.paths.root());
     }
 
     #[test]
-    fn the_reported_url_follows_the_port_a_server_actually_bound() {
+    fn making_a_web_server_active_writes_it_to_the_document() {
         let temp = TempDir::new();
-        let paths = temp.home();
-        paths.ensure_layout().unwrap();
-        let project = plain_project(&temp, "");
-        let mut config = Config::default();
-        config.server.port = 80;
-        let os = Os::host();
+        let base_dir = temp.path();
 
-        // Nothing running: the configured port is the best answer available.
+        let mut book = PanelBook::load(base_dir).expect("the document loads");
+        assert_eq!(book.config().active_web_server(), "Apache", "the default");
+
+        book.set_active_web_server("Nginx").expect("it saves");
+
+        // The document on disk says so, so the next load does too - which is
+        // what the picker is for.
+        let reloaded = PanelBook::load(base_dir).expect("it reloads");
+        assert_eq!(reloaded.config().settings.active_web_server, "Nginx");
+        assert_eq!(reloaded.config().active_web_server(), "Nginx");
+        assert!(
+            reloaded
+                .config()
+                .essential_services()
+                .contains(&"Nginx".to_owned()),
+            "and the essential pass follows the setting"
+        );
+        assert!(
+            !reloaded
+                .config()
+                .essential_services()
+                .contains(&"Apache".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_database_kind_names_the_service_it_runs_as() {
+        assert_eq!(database_service(DatabaseKind::Mariadb).unwrap(), "MySQL");
+        assert_eq!(database_service(DatabaseKind::Mysql).unwrap(), "MySQL");
+        assert!(database_service(DatabaseKind::None).is_err());
+    }
+
+    #[test]
+    fn an_installation_has_one_card_per_configured_service() {
+        let temp = TempDir::new();
+        let context = context(&temp, Config::default());
+
+        // Loading creates the default document, so the cards are the shipped
+        // ones; the point here is that the stack is built from that document and
+        // not from anything in `lambo.yml`.
+        let installation = installation(&context).expect("the installation loads");
         assert_eq!(
-            effective_url(&paths, &project, &config, os),
-            "http://localhost"
+            installation.stack.services().len(),
+            installation.config.services.len()
         );
-
-        // Now record a live server on a fallback port. `effective_url` must
-        // follow it, because reporting 80 here would point the user at an
-        // address nothing is listening on. The record points at this test's
-        // own process, which is genuinely alive, and carries no identity so
-        // liveness alone decides.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let bound = listener.local_addr().unwrap().port();
-        let mut state = State::load(&paths).unwrap();
-        let mut record = ServiceRecord::new(names::PHP_SERVER, std::process::id(), "php -S");
-        record.port = Some(bound);
-        state.record(record);
-        state.save(&paths).unwrap();
-
-        assert_eq!(active_http_port(&paths, os), Some(bound));
-        assert_eq!(
-            effective_url(&paths, &project, &config, os),
-            format!("http://localhost:{bound}"),
-            "the URL must follow the port that is really listening"
+        assert!(installation.service("Apache").is_some());
+        assert!(
+            installation
+                .names_of_kind("web")
+                .contains(&"Apache".to_owned())
         );
-
-        drop(listener);
     }
 
     #[test]
-    fn a_taken_port_is_reported_before_anything_is_started() {
+    fn the_web_port_is_reported_only_when_something_is_listening() {
         let temp = TempDir::new();
-        let project = plain_project(&temp, "");
+        let context = context(&temp, Config::default());
 
-        // Occupy the port the project wants with a real listener, so the check
-        // observes a conflict rather than being told about one.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let taken = listener.local_addr().unwrap().port();
-        let mut config = Config::default();
-        config.server.port = taken;
-        let context = context(&temp, config);
-
-        // The web port is allowed to move: `http://localhost:8081` is a better
-        // outcome than refusing to start, as long as the change is stated.
-        let ports = preflight(&project, &context, DatabaseKind::None).expect("resolves");
-        assert_ne!(ports.http, taken, "must move off the occupied port");
-        assert!(port::is_free(ports.http), "and land somewhere usable");
-        assert_eq!(ports.http_requested, taken);
-
-        let note = ports
-            .http_note
-            .as_deref()
-            .expect("a port change must be explained, never absorbed silently");
-        assert!(note.contains(&taken.to_string()), "{note}");
-        assert!(
-            note.contains(&ports.http.to_string()),
-            "the note must name the URL the user will actually get: {note}"
-        );
-        drop(listener);
-    }
-
-    #[test]
-    fn an_occupied_database_port_is_a_hard_failure_not_a_fallback() {
-        let temp = TempDir::new();
-        let project = plain_project(&temp, "");
-
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let taken = listener.local_addr().unwrap().port();
-        let mut config = Config::default();
-        config.server.port = port::first_free(45_100..45_200).unwrap();
-        config.database.port = taken;
-        let context = context(&temp, config);
-
-        // Unlike the web port, the database port is a contract: `.env` records
-        // it and applications connect to it. Silently moving it would break
-        // every client the user already has configured.
-        let error = preflight(&project, &context, DatabaseKind::Mariadb).unwrap_err();
-        let message = error.to_string();
-        assert!(message.contains(&taken.to_string()), "{message}");
-        assert!(
-            error
-                .details()
-                .iter()
-                .any(|line| line.contains("database.port")),
-            "{:?}",
-            error.details()
-        );
-        drop(listener);
-    }
-
-    #[test]
-    fn free_ports_pass_preflight() {
-        let temp = TempDir::new();
-        let project = plain_project(&temp, "");
-        let mut config = Config::default();
-        let free = port::first_free(45_000..45_100).unwrap();
-        config.server.port = free;
-        let context = context(&temp, config);
-        let ports = preflight(&project, &context, DatabaseKind::None).expect("resolves");
-        assert_eq!(ports.http, free, "a free port is used as configured");
-        assert!(ports.http_note.is_none(), "and nothing needs explaining");
-    }
-
-    #[test]
-    fn up_refuses_to_run_without_php_and_says_how_to_fix_it() {
-        let temp = TempDir::new();
-        let project = plain_project(&temp, "");
-        let mut context = context(&temp, Config::default());
-        let mut report = Report::default();
-
-        // The Lambo home is a fresh temporary directory, so nothing is
-        // installed; the catalogue ships no checksums, so the install cannot be
-        // verified and must fail closed rather than run unverified code.
-        let error = ensure_php(&project, &mut context).unwrap_err();
-        let message = error.to_string();
-        assert!(message.contains("cannot verify"), "{message}");
-        // The remedy must name a mechanism that exists. Earlier revisions of
-        // this advice pointed at `lambo config set php.<version>.sha256`, a key
-        // that has never been in `Config::KEYS` - the command fails with
-        // "unknown configuration key", so the hint described a fix that could
-        // not be applied. The catalogue override is the real mechanism.
-        assert!(
-            message.contains("config/catalogs/"),
-            "the remedy must name the override directory: {message}"
-        );
-        assert!(
-            message.contains("lambo config hash"),
-            "the remedy must name how to compute the digest: {message}"
-        );
-        let details = error.details().join("\n");
-        assert!(details.contains("lambo php install"), "{details}");
-        assert!(details.contains("lambo php list-versions"), "{details}");
-        report.push(Step::failed("php", message));
-        assert_eq!(report.steps[0].marker(), "x");
-        assert!(
-            !State::load(&context.paths)
-                .unwrap()
-                .services
-                .contains_key(names::APACHE)
-        );
+        // Nothing is running, so there is no port to report, whatever the
+        // configuration says.
+        assert_eq!(active_http_port(&context.paths, Os::host()), None);
     }
 
     #[test]
     fn the_report_reads_as_a_list_of_what_happened() {
         let mut report = Report::default();
-        report.push(Step::done("validate", "shop (plain PHP)"));
-        report.push(Step::skipped("database", "this project does not use one"));
-        report.push(Step::done(
-            "server",
-            "Apache listening on http://localhost:8080",
-        ));
-        report.url = Some("http://localhost:8080".to_owned());
+        report.push(Step::done("Apache", "started"));
+        report.push(Step::skipped("phpMyAdmin", "nothing to start"));
+        report.url = Some("http://localhost/".to_owned());
 
         let rendered = report.render();
-        assert!(
-            rendered.contains("+ validate  shop (plain PHP)"),
-            "{rendered}"
-        );
-        assert!(
-            rendered.contains("- database  this project does not use one"),
-            "{rendered}"
-        );
-        assert!(rendered.ends_with("→ http://localhost:8080"), "{rendered}");
+        assert!(rendered.contains("Apache"));
+        assert!(rendered.contains("http://localhost/"));
     }
 
     #[test]
-    fn down_clears_records_of_processes_that_are_already_gone() {
-        let temp = TempDir::new();
-        let mut context = context(&temp, Config::default());
-        let mut state = State::default();
-        state.record(
-            ServiceRecord::new(names::APACHE, u32::MAX, "httpd -f httpd.conf").with_port(8080),
-        );
-        state.record(ServiceRecord::new(names::DATABASE, u32::MAX - 1, "mariadbd").with_port(3306));
-        state.save(&context.paths).unwrap();
+    fn a_status_word_follows_the_engine() {
+        let running = ServiceStatus {
+            name: "Apache".to_owned(),
+            recorded: true,
+            running: true,
+            pid: Some(4242),
+            port: Some(80),
+            uptime: None,
+            log: None,
+            occupant: None,
+        };
+        assert_eq!(running.state_word(), "running");
 
-        let report = down(&mut context).unwrap();
-        assert_eq!(report.steps.len(), 2);
-        assert!(
-            report
-                .steps
-                .iter()
-                .all(|step| step.outcome == StepOutcome::Skipped)
-        );
-        assert!(State::load(&context.paths).unwrap().is_empty());
-    }
+        let idle = ServiceStatus {
+            running: false,
+            ..running.clone()
+        };
+        assert_eq!(idle.state_word(), "stopped");
 
-    #[test]
-    fn status_reports_a_recorded_but_dead_service_as_stopped() {
-        let temp = TempDir::new();
-        let mut context = context(&temp, Config::default());
-        let mut state = State::default();
-        state.record(ServiceRecord::new(names::APACHE, u32::MAX, "httpd").with_port(8080));
-        state.save(&context.paths).unwrap();
-
-        let status = status(None, &mut context).unwrap();
-        // The record is pruned because the process is gone, so the service is
-        // reported as not started rather than as a corpse that is "running".
-        let apache = status
-            .services
-            .iter()
-            .find(|service| service.name == names::APACHE)
-            .unwrap();
-        assert_eq!(apache.state_word(), "not started");
-        assert!(!status.serving);
-        assert!(State::load(&context.paths).unwrap().is_empty());
-    }
-
-    #[test]
-    fn status_lists_every_service_even_when_nothing_is_running() {
-        let temp = TempDir::new();
-        let mut context = context(&temp, Config::default());
-        let status = status(None, &mut context).unwrap();
-
-        let names: Vec<&str> = status
-            .services
-            .iter()
-            .map(|service| service.name.as_str())
-            .collect();
-        assert_eq!(
-            names,
-            [
-                names::DATABASE,
-                names::APACHE,
-                names::PHP_SERVER,
-                names::DBUI
-            ]
-        );
-        assert!(
-            status
-                .services
-                .iter()
-                .all(|service| service.state_word() == "not started")
-        );
-    }
-
-    #[test]
-    fn status_reports_the_project_url_only_when_it_answers() {
-        let temp = TempDir::new();
-        let project = plain_project(&temp, "");
-        let mut config = Config::default();
-        config.server.port = port::first_free(45_100..45_200).unwrap();
-        let mut context = context(&temp, config.clone());
-
-        let status = status(Some(&project), &mut context).unwrap();
-        assert_eq!(
-            status.url.as_deref(),
-            Some(naming::local_url(config.server.port).as_str())
-        );
-        assert!(
-            !status.serving,
-            "nothing is listening, so nothing may be reported as serving"
-        );
-    }
-
-    #[test]
-    fn env_writing_fills_in_only_what_is_missing() {
-        let temp = TempDir::new();
-        let mut config = Config::default();
-        config.database.password = "s3cret".to_owned();
-        let context = context(&temp, config);
-
-        let root = temp.join("shop");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("index.php"), "<?php\n").unwrap();
-        std::fs::write(
-            root.join("lambo.yml"),
-            "server:\n  document_root: .\ndatabase:\n  kind: mariadb\n",
-        )
-        .unwrap();
-        std::fs::write(root.join(".env"), "DB_HOST=db.internal\nAPP_NAME=Shop\n").unwrap();
-
-        let project = Project::load(&root).unwrap();
-        let detail = write_env(&project, &context).unwrap();
-
-        let written = std::fs::read_to_string(root.join(".env")).unwrap();
-        assert!(
-            written.contains("DB_HOST=db.internal"),
-            "the project's own value must win: {written}"
-        );
-        assert!(written.contains("DB_NAME=shop"), "{written}");
-        assert!(written.contains("DB_PASSWORD=s3cret"), "{written}");
-        assert!(detail.contains("wrote"), "{detail}");
-
-        // A second run changes nothing.
-        let detail = write_env(&project, &context).unwrap();
-        assert!(detail.contains("already had"), "{detail}");
-    }
-
-    #[test]
-    fn a_database_manager_is_only_installed_when_it_can_be_verified() {
-        let temp = TempDir::new();
-        let mut context = context(&temp, Config::default());
-        let error = open_database_ui(&mut context, Some("shop"), false).unwrap_err();
-        assert!(matches!(error, Error::RuntimeMissing { .. }), "{error:?}");
-        assert!(
-            error.details().iter().any(|line| line.contains("lambo db")),
-            "{:?}",
-            error.details()
-        );
-    }
-
-    #[test]
-    fn the_php_server_spec_binds_the_loopback_interface_and_the_document_root() {
-        let temp = TempDir::new();
-        let paths = temp.home();
-        crate::testutil::install_fake_runtime(&paths, RuntimeKind::Php, "8.4.2", Os::host());
-        let php = runtime::installed(&paths, RuntimeKind::Php)
-            .unwrap()
-            .remove(0);
-        let docroot = paths.projects_dir().join("shop");
-        let log = logs::php(&paths);
-
-        let spec = crate::php::serve_spec(&php, 8080, &docroot, &log, Os::host()).unwrap();
-        let rendered = spec.render();
-        assert!(rendered.contains("127.0.0.1:8080"), "{rendered}");
-        assert!(rendered.contains("-S"), "{rendered}");
-        assert!(
-            rendered.contains(&docroot.display().to_string()),
-            "{rendered}"
-        );
-        assert!(spec.detached, "the server must outlive the CLI");
+        let tool = ServiceStatus {
+            recorded: false,
+            ..idle
+        };
+        assert_eq!(tool.state_word(), "not started");
     }
 }

@@ -8,6 +8,7 @@ pub mod config;
 pub mod db;
 pub mod doctor;
 pub mod down;
+pub mod frameworks;
 pub mod init;
 pub mod logs;
 pub mod migrate;
@@ -17,13 +18,17 @@ pub mod restart;
 pub mod server;
 pub mod status;
 pub mod up;
+pub mod verify;
+pub mod vhosts;
 pub mod workspace;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use lambo_core::catalog::Catalog;
 use lambo_core::config::Config;
 use lambo_core::download::SystemDownloader;
+use lambo_core::logs::LogFn;
 use lambo_core::paths::Paths;
 use lambo_core::platform::{Os, Platform};
 use lambo_core::project::Project;
@@ -38,6 +43,15 @@ static DOWNLOADER: SystemDownloader = SystemDownloader;
 /// Resolves the process working directory with path context on failure.
 pub(crate) fn current_dir() -> lambo_core::Result<PathBuf> {
     std::env::current_dir().map_err(|e| lambo_core::Error::io(".", e))
+}
+
+/// Where the engine narrates what it is doing.
+///
+/// Installing a component and starting a service both take time, and the engine
+/// reports each stage as it reaches it. The CLI shows those lines as they
+/// arrive; the step report at the end is the summary of the same run.
+fn engine_log() -> LogFn {
+    Arc::new(|line: &str| println!("{line}"))
 }
 
 /// Resolves the home, configuration and catalogue every command needs.
@@ -56,6 +70,7 @@ pub(crate) fn context() -> lambo_core::Result<Context<'static>> {
         platform: Platform::host(),
         downloader: &DOWNLOADER,
         os: Os::host(),
+        log: engine_log(),
     })
 }
 

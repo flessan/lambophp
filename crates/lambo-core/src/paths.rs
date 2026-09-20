@@ -247,11 +247,6 @@ impl Paths {
         self.config_dir().join("catalogs")
     }
 
-    /// State of the services Lambo currently owns.
-    pub fn state_file(&self) -> PathBuf {
-        self.data_dir().join("services.yml")
-    }
-
     /// Log directory of one service group (`apache`, `database`, `lambo`).
     pub fn service_logs_dir(&self, service: &str) -> PathBuf {
         self.logs_dir().join(service)
@@ -408,10 +403,6 @@ mod tests {
         assert_eq!(
             paths.service_logs_dir("apache"),
             Path::new(r"C:\Lambo").join("logs/apache")
-        );
-        assert_eq!(
-            paths.state_file(),
-            Path::new(r"C:\Lambo").join("data/services.yml")
         );
     }
 

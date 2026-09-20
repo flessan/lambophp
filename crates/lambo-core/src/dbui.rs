@@ -43,9 +43,8 @@ use crate::fsx;
 use crate::naming;
 use crate::paths::Paths;
 use crate::platform::{Os, Platform};
-use crate::process::{self, ProcessSpec};
+use crate::process::ProcessSpec;
 use crate::runtime::InstalledRuntime;
-use crate::state::{ServiceRecord, names};
 use crate::version::VersionSpec;
 
 /// The file name Lambo expects inside its database manager directory.
@@ -343,7 +342,10 @@ pub fn command_spec(plan: &Plan) -> ProcessSpec {
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let mut spec = ProcessSpec::new(&plan.php, names::DBUI)
+    // The process carries the manager's own name - `phpmyadmin`, `adminer` -
+    // because that is the name the configuration gives it and the one a line
+    // about it should use.
+    let mut spec = ProcessSpec::new(&plan.php, plan.kind.clone())
         .arg("-S")
         .arg(format!("127.0.0.1:{}", plan.port))
         .arg("-t")
@@ -358,52 +360,6 @@ pub fn command_spec(plan: &Plan) -> ProcessSpec {
         spec = spec.env("PHPRC", phprc);
     }
     spec
-}
-
-/// Starts the manager.
-pub fn start(plan: &Plan, os: Os) -> Result<ServiceRecord> {
-    if !plan.entry.is_file() {
-        return Err(Error::RuntimeNotInstalled {
-            kind: "database manager",
-            name: plan.kind.clone(),
-            path: plan.entry.clone(),
-        });
-    }
-    if let Some(parent) = plan.log.parent() {
-        fsx::ensure_dir(parent)?;
-    }
-
-    let spec = command_spec(plan);
-    let child = process::spawn(&spec, os)?;
-    let pid = child.id();
-    drop(child);
-
-    let identity = process::identity_settled(
-        pid,
-        os,
-        &spec.program,
-        std::time::Duration::from_millis(500),
-    );
-    let mut record = ServiceRecord::new(names::DBUI, pid, spec.render())
-        .with_port(plan.port)
-        .with_log(plan.log.clone());
-    if let Some(identity) = &identity {
-        record = record.with_identity(identity);
-    }
-    Ok(record)
-}
-
-/// Stops the manager.
-pub fn stop(record: &ServiceRecord, os: Os) -> Result<crate::process::StopOutcome> {
-    // PHP's built-in server has no graceful-shutdown command; a normal
-    // termination is enough because it holds no persistent state.
-    process::stop_verified(
-        record.pid,
-        record.identity().as_ref(),
-        os,
-        None,
-        std::time::Duration::from_secs(5),
-    )
 }
 
 /// Builds the URL to open, prefilling what is safe to prefill.
@@ -547,7 +503,16 @@ mod tests {
     fn installing_without_a_checksum_fails_closed_with_a_way_forward() {
         let temp = TempDir::new();
         let paths = temp.home();
-        let catalog = Catalog::embedded().unwrap();
+        let mut catalog = Catalog::embedded().unwrap();
+        // The shipped catalogue pins a digest for this release - that is what
+        // lets the pinned-release test install it. This test is about the road
+        // taken when no digest is known, so it unpins the release first; the
+        // user-side override catalogue is the mechanism that would do the same.
+        for release in &mut catalog.dbui {
+            if release.version == "5.2.3" && release.platform == "windows-x64" {
+                release.sha256 = None;
+            }
+        }
         let platform = Platform::new(Os::Windows, crate::platform::Arch::X86_64);
 
         let error = install(
@@ -673,23 +638,19 @@ mod tests {
     }
 
     #[test]
-    fn starting_without_an_entry_point_reports_what_is_missing() {
+    fn a_manager_that_is_not_installed_has_no_entry_point_to_serve() {
+        // The card's Start installs a missing manager instead of running it, so
+        // what a start has to know is whether the entry point is there at all.
         let temp = TempDir::new();
         let paths = temp.home();
-        let plan = Plan {
-            kind: "phpmyadmin".to_owned(),
-            port: 8081,
-            database_port: 3306,
-            database_user: "root".to_owned(),
-            php: PathBuf::from("php"),
-            phprc: None,
-            entry: entry_path(&paths),
-            log: temp.join("dbui.log"),
-        };
-        let error = start(&plan, Os::host()).unwrap_err();
-        assert!(
-            matches!(error, Error::RuntimeNotInstalled { .. }),
-            "{error:?}"
-        );
+
+        assert!(!is_installed(&paths));
+        assert!(!entry_path(&paths).is_file());
+
+        // A file at the entry point is what `is_installed` reports, whatever
+        // wrote it - the same rule the installer's check file follows.
+        fs::create_dir_all(directory(&paths)).unwrap();
+        fs::write(entry_path(&paths), "<?php").unwrap();
+        assert!(is_installed(&paths));
     }
 }

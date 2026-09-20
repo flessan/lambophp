@@ -4,17 +4,31 @@ Where Lambo is, and what is deliberately not done yet.
 
 ## Shipped
 
-**Engine, CLI and a native GUI** - the engine and CLI are complete and tested;
-the GUI compiles and type-checks for Windows but has not been run.
+**Engine, CLI and a native GUI** - all three are complete, and the engine is
+audited symbol by symbol against the application it replaces. The window
+itself has still never been
+*run*: it compiles, its logic is tested on every platform, and it is
+cross-compiled for Windows, but no one has watched it paint a pixel. That is the
+one claim this roadmap will not make until the manual checklist in
+[windows.md](windows.md) has been run on a physical machine.
 
 - Localhost-first: ports default to 80/443 so the URL is `http://localhost`,
   with an automatic, explained fallback when the port cannot be bound
   (ADR-0007). The database manager is mounted at `/phpmyadmin` on the project's
   own port rather than given a port of its own.
-- Application API (`lambo_core::app`): structured, serializable models that a
-  GUI consumes directly. No front end parses another's output.
-- GUI (`lambo-gui`): a Win32 dashboard over that API. **Cross-compiled and
-  type-checked for `x86_64-pc-windows-msvc`, never executed** - see below.
+- The panel: thirty services with their own cards, version menus, console and
+  configuration buttons, plus the Projects, Editor, Vhosts and Settings pages,
+  the tray icon, autostart and the log panel. Every page is described by
+  `lambo_core::ui_state` and drawn by `lambo-gui`; the window holds no business
+  logic, which is what keeps it identical to the CLI in behaviour.
+- GUI (`lambo-gui`): a Win32 shell over the engine - the panel's own view and
+  state are pure and tested (they run under `cargo test` on Linux, macOS and
+  Windows), and `win32.rs` is drawing and event wiring over them.
+  **Cross-compiled and type-checked for `x86_64-pc-windows-msvc`, never
+  executed** - see below and the manual checklist the Windows page carries.
+- The previous implementation's installation upgrades in place: its state file
+  loads unchanged, its managed blocks are replaced rather than duplicated, and
+  its downloaded archives are validated and adopted instead of re-fetched.
 
 - PHP: detect, download, verify, extract, per-version install, activate,
   generated `php.ini`, run without touching `PATH`
@@ -59,17 +73,22 @@ the GUI compiles and type-checks for Windows but has not been run.
 - CI: test / clippy / fmt on Windows, Linux and macOS, plus cross-compile
   checks in both directions
 
-Test suite: **488 tests** - 335 core unit tests, 37 written against the public
-API the way a GUI would consume it, 26 over artifact source resolution and the
-release gate, 13 that install a runtime which actually executes and assert on
-what it reported, 10 lifecycle tests that drive the real orchestration against a
-live server, 10 that drive the real download pipeline against committed
-artifacts, 9 over the application API a GUI binds to, 18 over the GUI's view
-layer, 7 Windows path tests, 6 that drive `lambo php` through the real install
-pipeline, 6 CLI argument tests, 5 that drive the `lambo` binary through a full
-service lifecycle, 1 doc-test, and 1 real-artifact test that CI skips - with
-`cargo clippy --all-targets -D warnings` clean and a clean cross-compile to
-`x86_64-pc-windows-msvc`.
+Test suite: **908 tests**, plus **477** more run by the local rustc harness on
+machines where the crate graph is not available (which is where the framework
+runner and the pure-logic modules are covered). The 908 are the engine's unit
+tests (744), 37 written against the public API the way the GUI consumes it, 28
+over the GUI's view layer, 26 over artifact source resolution and the release
+gate, 16 lifecycle tests that drive the real orchestration against a live
+server, 13 that install a runtime which actually executes and assert on what it
+reported, 10 that drive the real download pipeline against committed artifacts,
+10 over the GUI's panel state and the actions its controls raise, 7 Windows path
+tests, 6 that drive `lambo php` through the real install pipeline, 6 CLI argument
+tests, 4 over the upgrade path from the previous implementation's installation,
+and 1 real-artifact test that CI skips - with `cargo clippy --all-targets
+-D warnings` clean on the host and for `x86_64-pc-windows-msvc`, and a clean
+cross-compile to that target.
+
+The counts in this paragraph are the ones the closing run recorded.
 
 ### What "verified" means
 
@@ -111,21 +130,30 @@ so and skips. The rest needs the pinned checksums in
 
 ### 1. Pinned checksums for every catalogue entry
 
-The single largest gap, and the only thing standing between the installer and
-being usable out of the box. The catalogue ships with `sha256: null` for all 20
-entries, so **a fresh machine cannot install anything until the user pins a
-digest** - the downloader fails closed, correctly, but out of the box that means
-"does not work yet".
+**Mostly done.** The shipped catalogue pins a SHA-256 for every entry whose
+publisher exposes a usable digest: PHP 8.4.2 on Windows, the Apache Lounge
+httpd build, both MariaDB Windows zips and the Linux x86_64 tarball, and
+phpMyAdmin on every platform - each pinned from the publisher's own checksum
+document. Entries left at `null` verify through the upstream `<url>.sha256`
+sidecar rule where the host publishes one (the older Windows PHP archives),
+and fail closed where none exists: the static-php.dev PHP builds for Linux and
+macOS, Oracle MySQL and Adminer publish no digest Lambo can consume. The two
+Apache entries that pointed at apache.org directories that no longer carry
+Windows binaries were removed; Apache is an Apache Lounge build now, the same
+source the panel's resolver uses.
 
-The *mechanism* is finished and tested: `lambo doctor --release` reports exactly
-which entries block a release, `lambo config hash` computes a digest, and a
-maintainer records it in `catalogs/default.json`. What remains is the work that
-needs network access to the upstream hosts, which this development environment
-does not have.
+What remains: for each entry still at `null`, obtain a digest from its
+publisher (or a source the project is willing to trust) and record it, then
+add a CI job that verifies every pinned digest still matches upstream.
 
-Work: for each of the 20 entries, download the artifact, check its digest
-against the publisher's own published value, and record it. Then add a CI job
-that verifies every pinned digest still matches upstream.
+**The panel's own catalogue is a separate matter.** The thirty services the
+dashboard offers are downloaded the way the application they were ported from
+downloaded them: the URL and file name come from the catalogue, and the result
+is validated by inspecting it (an empty file, a truncated archive or a saved
+HTML error page is rejected and fetched again). Pinning those digests too would
+be an improvement, but it is a *change* from the behaviour being preserved, so
+it belongs here rather than in the port - and it is the same work as above: 29
+more artifacts, downloaded once on a machine with network access.
 
 Acceptance: `lambo doctor --release` exits 0, and on a clean Windows machine
 `lambo php install 8.4` succeeds with no user action.
@@ -137,7 +165,8 @@ Lambo will find on `PATH`) or use `server.kind: php`.
 
 ### 3. phpMyAdmin checksum
 
-`lambo db install-ui` fails closed for the same reason as #1.
+**Done.** phpMyAdmin's digest is pinned in the shipped catalogue, so
+`lambo db install-ui` works out of the box. (Adminer's remains part of #1.)
 
 ### 4. HTTPS
 
@@ -163,11 +192,11 @@ wraps it would promise more than it delivers.
 These are conscious exclusions, not oversights.
 
 - **Docker or container backends.** The premise is native execution.
-- **A complicated GUI.** The engine is GUI-ready; a first GUI would be a thin
-  rendering layer, and building a rich one now would compete with the engine.
-- **DNS / `.test` domain resolution and `/etc/hosts` editing.** Requires
-  elevation on every platform, which the default workflow must not need.
-  `http://localhost` is the supported answer.
+- **A DNS server for `.test` domains.** Virtual hosts and the hosts file *are*
+  supported (`lambo vhosts`, the Vhosts page) - writing the hosts file needs
+  elevation, and Lambo says so instead of failing quietly - but running a
+  resolver on port 53 would need a service, and the default workflow must not
+  require either. `http://localhost` remains the answer that always works.
 - **A plugin API.** Premature; the module boundaries would have to freeze
   first.
 - **Windows services.** Lambo supervises processes itself. Registering a

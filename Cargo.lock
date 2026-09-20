@@ -128,6 +128,7 @@ version = "0.14.0-rc.1"
 dependencies = [
  "crc32fast",
  "flate2",
+ "lambo-process-windows",
  "semver",
  "serde",
  "serde_json",
@@ -140,6 +141,13 @@ name = "lambo-gui"
 version = "0.14.0-rc.1"
 dependencies = [
  "lambo-core",
+ "windows-sys",
+]
+
+[[package]]
+name = "lambo-process-windows"
+version = "0.14.0-rc.1"
+dependencies = [
  "windows-sys",
 ]
 

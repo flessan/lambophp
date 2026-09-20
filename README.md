@@ -1,13 +1,16 @@
 # Lambo PHP
 
-> **Release Candidate `0.14.0-rc.1` - The installer is broken and Windows 11
-> is not detected.**
-> A Windows installer has been created, but running it on Windows 11 causes
-> a **SIGSEGV** error:
-> `The application was unable to start correctly (0xc000001e) and must be closed.`
-> The installer `LamboPHP-Setup.exe` is available in the assets of the
-> release. You can download it and manually run the acceptance checklist in
-> [docs/windows.md](docs/windows.md).
+> **Release Candidate `0.14.0-rc.1` - not yet validated on a physical Windows
+> machine.**
+> A Windows build has been produced, and one report says that launching it on
+> Windows 11 fails with
+> `The application was unable to start correctly (0xc000001e)`. That code means
+> Windows could not map the executable, and it is the one class of failure no
+> amount of testing on other machines can see. `LamboPHP-Setup.exe` is in the
+> assets of the release; the diagnosis steps are in
+> [docs/windows.md](docs/windows.md#if-nothing-starts-at-all) and the acceptance
+> checklist in the same file is what this release is waiting on. **Nothing in
+> this repository claims the window has been run.**
 
 **A native local PHP development environment.**
 
@@ -52,11 +55,14 @@ Windows, `~/.lambo` elsewhere - and `LAMBO_HOME` moves it anywhere, including
 onto a USB stick. Details: [docs/installation.md](docs/installation.md).
 
 > [!IMPORTANT]
-> **The download catalogue ships without pinned checksums.** Lambo refuses to
-> run anything it cannot verify, so `lambo php install` will fail closed until
-> you pin a SHA-256 for the releases you want. That is deliberate: a tool that
-> executes downloaded binaries should not guess about their integrity. One
-> file fixes it - see
+> **Every verifiable download is checksum-pinned; the rest fail closed.**
+> The shipped catalogue pins a SHA-256 for every entry whose publisher exposes
+> a usable digest - PHP 8.4.2 on Windows, Apache (Apache Lounge build),
+> MariaDB and phpMyAdmin - and verifies the others against their upstream
+> `.sha256` sidecars where those exist. Entries with neither (the static-php
+> PHP builds for Linux/macOS, Oracle MySQL, Adminer) are refused until a
+> digest is pinned. That is deliberate: a tool that executes downloaded
+> binaries should not guess about their integrity. One file fixes it - see
 > [docs/installation.md#pinning-checksums](docs/installation.md#pinning-checksums).
 
 ## What Lambo does
@@ -109,17 +115,24 @@ Reference: [docs/lambofile.md](docs/lambofile.md).
 
 ## How it is built
 
-Strictly layered: **all** business logic lives in `lambo-core`; the CLI is a
-thin shell that parses, renders and delegates. A future GUI consumes the same
-core API and therefore cannot behave differently.
+Strictly layered: **all** business logic lives in `lambo-core`, and both
+interfaces are thin shells that parse, render and delegate. There is one
+engine, so they cannot disagree.
 
 ```
-crates/lambo-core   the engine: config, detection, runtimes, services, doctor
-crates/lambo-cli    the `lambo` binary (no logic of its own)
-docs/               architecture, ADRs, references, guides
-packaging/          the Windows installer definition
-scripts/            install, package and installer automation
-web/                the landing page (GitHub Pages)
+GUI ─┐
+     ├──> crates/lambo-core
+CLI ─┘
+
+crates/lambo-core            the engine: config, state, detection, runtimes,
+                             services, host and vhost files, doctor
+crates/lambo-cli             the `lambo` binary (no logic of its own)
+crates/lambo-gui             the Win32 panel (no logic of its own)
+crates/lambo-process-windows the Win32 process backend the engine calls
+docs/                        architecture, ADRs, references, guides
+packaging/                   the Windows installer definition
+scripts/                     install, package and installer automation
+web/                         the landing page (GitHub Pages)
 ```
 
 Deep dive: [docs/architecture.md](docs/architecture.md) and the [ADRs](docs/adr/).
@@ -140,15 +153,29 @@ Deep dive: [docs/architecture.md](docs/architecture.md) and the [ADRs](docs/adr/
 
 ## Status
 
-The engine and the CLI are complete and tested: **342 tests** - 299 core unit
-tests, 37 integration tests against the public API, 6 CLI argument tests - with
-a clean `cargo clippy --all-targets -D warnings` and a clean cross-compile to
-`x86_64-pc-windows-msvc`. What is *not* done yet is the release engineering
-around it - the catalogue needs pinned checksums before a fresh machine can
-install PHP, and the macOS Apache/MariaDB entries do not exist. Nothing in the
-Windows-specific code paths has been executed on physical Windows; that smoke
-test is written out in [docs/windows.md](docs/windows.md). Tracked in
-[docs/roadmap.md](docs/roadmap.md).
+The engine, the CLI and the window are written, and the whole of the
+application Lambo replaces was audited against them symbol by symbol: every
+function, type, constant and variable mapped to what it became, with the four
+things deliberately not carried over recorded in the same pass. Locally:
+**908 tests passing** (and 477 more through the local harness), `cargo clippy
+-D warnings` clean on the host and for `x86_64-pc-windows-msvc`, and a clean
+cross-compile to that target.
+
+The catalogue now pins a SHA-256 for every entry whose publisher exposes a
+usable digest (PHP 8.4.2 on Windows, the Apache Lounge httpd build, MariaDB
+and phpMyAdmin), verifies against upstream sidecars where those exist, and
+fails closed for the entries no publisher digest covers - the remaining gap
+there is data collection, listed in
+[docs/roadmap.md](docs/roadmap.md#1-pinned-checksums-for-every-catalogue-entry).
+The `windows-behaviour` CI job's test filter has been corrected, so its
+83 previously-skipped tests run.
+
+One thing is *not* done: no one has watched the window run. Every claim about
+`win32.rs` in this repository is a claim about code that compiles and is
+type-checked for Windows, never about pixels on a screen. The checklist that
+closes that gap is [docs/windows.md](docs/windows.md); CI's verdict is not
+readable from the environment this work was done in, and
+[docs/release.md](docs/release.md) says exactly what that means.
 
 ## Contributing
 

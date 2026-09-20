@@ -10,7 +10,8 @@ maintainable for a decade - and every PR is reviewed against them.
 ```
 ┌──────────────────┐        ┌──────────────┐
 │       GUI        │        │  CLI (lambo) │   parse → delegate → render
-│   (future)       │        │    clap      │   ZERO business logic
+│  Windows, native │        │    clap      │   ZERO business logic
+│  panel (primary) │        │  (secondary) │
 └────────┬─────────┘        └──────┬───────┘
          └────────────┬────────────┘
                       ▼
@@ -48,9 +49,40 @@ Why this pays off:
 | --- | --- | --- |
 | `lambo-core` | The engine: all domain logic | serde, serde_yaml, serde_json, semver, thiserror, flate2, crc32fast |
 | `lambo-cli` | The `lambo` binary: parse, render, delegate | clap, lambo-core, thiserror |
+| `lambo-gui` | The native Windows panel: cards, tables, editor, tray, and the Win32 seam | lambo-core, windows-sys |
+| `lambo-process-windows` | The Windows process primitives (job objects, tree termination) | windows-sys |
 
 Dependency rule: interface crates depend on `lambo-core`; `lambo-core` depends
 on **nothing internal**. Any arrow in the other direction is a design bug.
+
+### How the panel keeps that rule
+
+`lambo-gui` is four modules, ordered by how much of it can be checked without a
+Windows desktop:
+
+| module | role | Win32? |
+| --- | --- | --- |
+| `view.rs` | how it looks: palette, fonts, DPI, identifier conversions | no |
+| `state.rs` | the panel's own state, and what each control asks for (`Action`) | no |
+| `ops.rs` | the engine call behind each action | no |
+| `win32.rs` | controls, painting, messages, the tray | yes |
+
+The first two are compiled and tested by the local rustc harness (its `gui_view`
+and `gui_state` modules), because a decision about a colour, a layout or a
+control's meaning is not a Win32 call. The third and fourth are type-checked by
+CI against the real `windows-sys`; until CI has said so, the only claim made for
+them is that they have been compiled for `x86_64-pc-windows-msvc` by a
+Windows-target compiler with `windows-sys` 0.59, which is not the same thing;
+the verification round recorded it as such. The rule is visible in what is *absent*: there
+is no second copy of a service's status in the panel - `stack::ManagedService`
+answers that - no vhost validation, no project naming rule, and no download
+logic. `ui_state` (in `lambo-core`, not in the GUI) owns the layout and the
+widget list, so the window has nothing to compute and the CLI could use the same
+geometry if a terminal front end ever wanted to. The same rule holds for the two
+menus: the tray's lines are `lambo-core::tray::menu`, and a card's version menu -
+its title, its variants and which of them carries the check mark - is
+`ui_state::{version_menu, version_menu_title}`. What is left in the window is the
+popup, the position it opens at and the id it reports back.
 
 ## `lambo-core` module map
 
@@ -62,31 +94,45 @@ Modules map 1:1 to concepts a user can name.
 | `paths` | The home directory and every path under it; `LAMBO_HOME` |
 | `config` | Global configuration, key validation, credential generation |
 | `lambofile` | The project file: parse, validate, serialize, ancestor search |
+| `panel` | The control panel's installation state (`config.json`): services, virtual hosts, projects, settings, and the migration rules that carry an older file forward |
 | `detect` | Evidence-based framework detection; every probe is reported |
 | `naming` | Slugifying, database names, local URLs |
 | `version` | Version specs (`stable`, `~8.3`, `^8.2`, `8.4.2`) |
 | `catalog` | The embedded download catalogue plus user overrides, and `validate()` - every entry checked before it can be used |
+| `catalog_panel` | The previous implementation's catalogue as data: the 29 installable components with their versions, download coordinates, kinds, per-version variants, the two live resolvers and the post-install hooks, and the `InstallPlan` each one resolves to |
 | `download` | HTTPS-only downloads, checksum resolution **before** fetching; returns the digest actually verified against |
+| `download_cache` | The shared `downloads/` cache: files are adopted as verified when this process writes them, anything older is validated before use, and the startup sweep collects provably-broken entries |
+| `vendor` | The two downloads with no fixed URL (Apache Lounge's newest Win64 build, Zig's newest stable release) and the index parsing that picks them |
+| `installer` | The install workflow the panel drives: cache lookup, download, unpacking, silent installers, hook dispatch, activation (a versioned install mirrored into the canonical directory) and the PATH-refresh seam |
+| `postinstall` | Everything after an archive is unpacked: the generated `httpd.conf` patch (installation root, document root, PHP handler block, vhost include), the shipped welcome page and runtime DLLs, `php.ini`, MariaDB and PostgreSQL initialisation, phpMyAdmin/Adminer, Composer, pip, rustup, RabbitMQ and MinIO state - each reached through `run(hook, ..)` |
+| `vhost` | Virtual hosts: the hosts file, the Apache vhost include and one nginx site file per host, each written into a managed block that is replaced rather than appended to - plus the virtual-hosts page's rules (the form's validation, the row's five cells, the extension selection, the enabled flag an edit keeps, the project domain move), so the page and `lambo vhosts` share one implementation |
 | `sha256` / `archive` | Digests; ZIP and tar.gz extraction with traversal and size limits |
 | `runtime` | Installed runtimes, the `.active` marker, executable discovery, install manifests and the integrity check behind `corrupt` |
 | `php` | PHP install/activate/remove, `php.ini` generation, `php -S`, and `RuntimeHealth` - starting the binary to confirm it actually runs |
-| `apache` | Generated `httpd.conf`, validation, graceful shutdown |
+| `apache` | Generated `httpd.conf`, validation, and the command line the engine runs |
 | `database` | MariaDB/MySQL: config, init, security, CRUD, shell |
 | `dbui` | phpMyAdmin (or Adminer) served on loopback, aliased at `/phpmyadmin` |
-| `browser` | Opening a URL with no shell on any platform |
+| `browser` | Opening a URL or a folder with no shell on any platform |
 | `envfile` | Non-destructive `.env` editing |
 | `process` | Spawn, stop, tree termination, liveness - no shell anywhere |
 | `port` | Free/occupied checks, alternatives, occupant identification |
+| `service` | One supervised process, as `service.go` runs it: the start preconditions, the port check, PostgreSQL's `runas`/`--hide-run` launch and its adopted `postmaster.pid`, the log streaming, the exit reporting, and the stop order (`pg_ctl` first, then the tree) - over the `ServiceHost` seam the tests script |
+| `zombies` | The startup sweep: the process table is read through the host, `\`-normalised and case-folded, and everything whose executable sits under `<base>/bin/` is killed with the message the log shows |
+| `console` | The two consoles the panel opens: a language runtime's terminal (the original's `langBinDirs`, ConEmu preference, `PATH` and `LAMBO_BASE`) and PostgreSQL's, both as argument vectors the Windows interface runs with a console of their own |
+| `stack` | The installation's services as one stack: a `ManagedService` per entry of the panel configuration, the card's start decision table (install-before-start, `exe missing`, open URL), the two essential passes, Stop All, `settings.auto_start`, the startup sweep, the toolbar's restart (stop, sweep, pause, essentials) and the web-server picker's switch (stop every other running web server) |
+| `pathenv` | The user `PATH`: the directories that belong on it, the collision rules, and the registry seam behind them |
+| `tray` | The tray menu model and the "start with Windows" setting: the `Run` value names, the command line, the check mark, and the store seam behind them |
 | `http` | Loopback health checks |
-| `state` | What Lambo started, in start order |
-| `logs` | Log locations, tail, follow, clear |
-| `session` | The ordered `up`/`down`/`status` orchestration |
+| `logs` | Log locations, tail, follow, clear, and the `LogFn` sink the engine narrates through |
+| `session` | The ordered `up`/`down`/`status` orchestration: it generates the configurations a service reads, points the panel configuration at them, and hands the run to `stack`. The one process it starts itself is a project's own web server - `server.kind: php`, where the runtime's `php -S` is supervised by the same `service` engine (`session::project_server`) and reported as `php-server`. It also holds the entry points the two interfaces call for projects and virtual hosts (`create_project`, `delete_project`, `set_project_domain`, `vhosts`, `save_vhost`, `delete_vhost`, `apply_vhosts`) over `PanelBook`, the installation document - which is also what records a version switch (`set_active_version`), so the build a card's picker chose survives a restart |
 | `doctor` | Diagnostics; every finding carries its fix |
 | `project` | The loaded project: resolved settings, validation, `.env` keys |
 | `migration` | The one-way king-PHP → Lambo upgrade |
 | `secret` | Password generation from in-tree entropy |
+| `frameworks` | The framework catalogue and the project scaffolder: 17 scaffolders, tool resolution, Composer, the four scaffold strategies, and the registration of a project and its vhost in the panel document |
 | `fsx` | Atomic writes, owner-only permissions |
 | `yaml` | The crate-private YAML facade (ADR-0004) |
+| `serde_defaults` | The one deserialization rule the state files need: a `null` list is an empty list. `#[serde(default)]` covers a missing key, not a key whose value is `null` - and the previous implementation writes `"projects": null`, so without this its own configuration file would not open |
 | `workspace` | Named groups of projects |
 
 ## The platform seam
@@ -116,10 +162,10 @@ Consequences, all deliberate:
 
 ### Stopping things
 
-`terminate_tree` signals the recorded pid, and on Windows uses
+`terminate_tree` signals the process the engine holds, and on Windows uses
 `taskkill /T`, which the OS scopes to that process's tree. It does **not**
-signal a process group derived from a pid: a group id read from a state file
-may have been recycled, and signalling it can hit processes Lambo has never
+signal a process group derived from a pid: a group id computed from a pid may
+have been recycled, and signalling it can hit processes Lambo has never
 seen. The cost is that a Unix child which double-forks may survive; the
 benefit is that Lambo can never kill something it does not own.
 
@@ -130,20 +176,38 @@ Project::load            lambo.yml + detection, validated
       │
 session::up
       ├─ validate          fail before anything starts
-      ├─ credentials       generate once, store in the global config
-      ├─ preflight         every port checked before anything binds
-      ├─ ensure_php        resolve, else install (verified)
-      ├─ start_database    init → start → TCP health → secure → create db
-      ├─ write_env         .env keys, never overwriting a set value
-      ├─ start_server      generate config → validate → start → HTTP health
-      ├─ state.save        recorded after every start, not at the end
-      └─ open browser      only once the URL answers
+      ├─ prepare           PHP runtime ensured, then the configurations the
+      │                    services read: httpd.conf (written, then checked by
+      │                    `httpd -t`) and my.cnf; the panel configuration's
+      │                    entries are pointed at them (`-f`, `--defaults-file`).
+      │                    Only what the project asks for: `database.kind: none`
+      │                    writes no database configuration at all
+      ├─ serve             one of two branches
+      │                    `server.kind: php` → the project's own server: the
+      │                    engine runs `php -S 127.0.0.1:<port> -t <docroot>`
+      │                    and the pass waits for that URL
+      │                    anything else     → Stack::ensure_essentials over the
+      │                    active web server, PHP-FPM, the database and the
+      │                    manager (installing what the catalogue says is
+      │                    missing), then the project's URL is waited for
+      └─ open browser      the page the pass ends on
 ```
+
+`up` is idempotent in both branches: a server that is already serving the
+project's port is reported with the engine's own `already running (pid N)`
+rather than started a second time, and it is recognised from another process -
+which matters because `lambo up` and the `lambo status` that follows it are two
+processes.
 
 Two properties are load-bearing:
 
-- **State is saved after each service starts**, not at the end. A failure at
-  step 6 leaves steps 1–5 recorded, so `lambo down` can clean up.
+- **The engine holds what it started**, so a failure half-way through leaves
+  everything that did start owned by a live `Service` - `lambo down` stops
+  exactly those processes, and there is no file that can disagree with them. A
+  process this engine did *not* hold is found by its executable or by the port
+  it holds ([`Service::pid`]), so `status` and `down` answer for a server another
+  Lambo process started; the startup sweep keeps only the pids this engine
+  holds, because everything else under `<base>/bin/` is a leftover.
 - **Nothing is reported as up until it was observed.** A started process that
   does not answer its port is a failure with the log path attached.
 
@@ -218,17 +282,27 @@ runs the latter; it validates metadata and downloads nothing.
 
 ## Testing
 
-397 tests, in layers that each prove something the layer below cannot:
+908 tests, in layers that each prove something the layer below cannot:
 
 | Layer | Count | What it proves |
 | --- | --- | --- |
-| `lambo-core` unit tests | 322 | Parsing, validation, path shapes, generated configuration, archive safety, port logic, process supervision, the session state machine |
+| `lambo-core` unit tests | 744 | Parsing, validation, path shapes, generated configuration, archive safety, port logic, process supervision, the session state machine, the panel's state model and every action its controls raise |
 | `public_api.rs` | 37 | The API is usable from outside the crate, the way a GUI would consume it |
-| `lifecycle.rs` | 10 | `up → HTTP 200 → status → down → no listener → no orphan`, against a real child process |
+| `lambo-gui` unit tests | 28 | `view.rs` and `state.rs`: the palette, geometry, button text, and the routing of every control to an engine call |
+| `sources.rs` | 26 | Artifact source resolution and its precedence, and the release gate over the catalogue |
+| `lifecycle.rs` | 16 | `up → HTTP 200 → status → down → no listener → no orphan`, against a real child process |
+| `runtime_execution.rs` | 13 | A runtime that is installed, started, asked its version, and stopped - asserting on what it reported |
+| `cli_lifecycle.rs` | 10 | The real `lambo` binary, driven through `init/up/status/down` |
 | `runtime_distribution.rs` | 10 | The download pipeline against committed artifacts with real digests |
 | `windows_paths.rs` | 7 | Windows path shapes, asserted while running on Linux |
-| `cli_lifecycle.rs` | 5 | The real `lambo` binary, driven through `init/up/status/down` |
+| `cli_php.rs` | 6 | `lambo php` through the real install pipeline |
 | CLI argument tests | 6 | Argument parsing |
+| `legacy_installation.rs` | 4 | An installation left by the implementation Lambo replaces: its state file loads unchanged, its archives are adopted rather than re-fetched, its markers are replaced rather than duplicated |
+| `real_artifacts.rs` | 1 | A genuine upstream archive, when one is staged; skipped loudly otherwise |
+
+Three further binaries exist and contribute nothing on Linux by design:
+`windows_handle_inheritance`, `lambo-process-windows`, and the fixture server
+`tests/fixtures/fixture_server`. On Windows the first two run.
 
 Test doubles are real, not mocks. `LocalDownloader` serves `file://` fixtures
 through the same code path as `curl`, so archive extraction and checksum

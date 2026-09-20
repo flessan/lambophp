@@ -46,10 +46,26 @@ cargo fmt --all --check
 cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
 ```
 
-The last one matters as much as the others: it is what catches a Unix-only
-import or a Windows-only API before a Windows user does. CI runs it in both
-directions (Windows target on Linux, Linux target on Windows is unnecessary
+The Windows-target check matters as much as the others: it is what catches a
+Unix-only import or a Windows-only API before a Windows user does. CI runs it in
+both directions (Windows target on Linux, Linux target on Windows is unnecessary
 because the Linux target builds natively there).
+
+One further check lives in `scripts/local-check/` and is not part of `cargo
+test`, deliberately - it reads the tree rather than building it, and it would
+fail the build for a workflow defect rather than a code one:
+
+```bash
+python3 scripts/local-check/check-ci-filter.py   # the windows-behaviour job's filter
+```
+
+Run it when you add a module with tests. It matters more than it sounds:
+`cargo test -- <filter>` matches test names by substring, so a module the
+`windows-behaviour` job was written to cover quietly stops running the moment
+its name changes, and the job stays green. The filter once missed 83 tests
+that way; the repair is part of this repository's history, and
+`scripts/local-check/windows-test-modules.txt` declares the coverage the
+script enforces.
 
 `unsafe_code` is `forbid`den workspace-wide. `std::env::set_var` is `unsafe` in
 edition 2024, so PATH-dependent code takes the search path as an *argument*
@@ -90,11 +106,12 @@ The checklist is short because the architecture does the work.
   [ADR-0006](adr/0006-windows-as-a-modelled-platform.md).
 - **Never claim success you did not observe.** A service is up when its port
   answers, not when a process started.
-- **Fail closed.** No checksum, no execution. No record in the state file, no
-  process gets signalled.
+- **Fail closed.** No checksum, no execution. No engine holding the process,
+  no signal is sent.
 - **Errors carry causes.** Use `Error::ServiceFailed` with its `causes` and
   `hint` rather than a bare message; the CLI renders them.
-- **Atomic writes.** Configuration and state go through `fsx::write_atomic`.
+- **Atomic writes.** Configuration, virtual hosts and the hosts file all go
+  through `fsx::write_atomic`.
 
 ## Testing notes
 

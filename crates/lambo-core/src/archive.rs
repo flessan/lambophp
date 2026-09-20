@@ -111,6 +111,41 @@ pub fn extract_kind(archive: &Path, destination: &Path, kind: Kind) -> Result<Ex
     }
 }
 
+/// Extracts a ZIP archive with a prefix filter and per-entry progress.
+///
+/// This is the shape a third-party installer needs rather than the shape a
+/// runtime manager needs:
+///
+/// * **`strip_top`** drops the wrapper directory an archive was packaged with
+///   (`Apache24/`, `nginx-1.28.3/`, `pgsql/`). An entry that does not start with
+///   the prefix is *skipped*, not an error - a ZIP may carry a readme or a
+///   licence file next to the wrapper and those are simply not wanted. An entry
+///   that is exactly the prefix, or the prefix minus its trailing slash, leaves
+///   an empty name and is skipped too.
+/// * **`progress`** is called once per entry *before* the entry is examined, so
+///   `done` counts every entry in the archive including the skipped ones and
+///   `total` is the archive's entry count. That is what the dashboard's
+///   "Extracting … 4102 / 9120 files" is showing.
+///
+/// Everything else is the behaviour of [`extract`]: entries that would escape
+/// the destination are refused, symbolic links are never created, and CRC-32 is
+/// verified as each entry is written.
+///
+/// A ZIP entry's Unix permission bits are *not* applied, which is what the
+/// original did (`os.OpenFile(..., f.Mode())`) and what [`extract`] does here as
+/// well: on Windows - the only platform this filtered path serves - the mode
+/// argument has no effect, and on Unix files are created readable. Carrying the
+/// bits over would make a Windows-authored archive (mode 0) unreadable.
+pub fn extract_zip_with(
+    archive: &Path,
+    destination: &Path,
+    strip_top: Option<&str>,
+    progress: Option<&dyn Fn(usize, usize)>,
+) -> Result<Extraction> {
+    fs::create_dir_all(destination).map_err(|source| Error::io(destination, source))?;
+    extract_zip_inner(archive, destination, strip_top, progress)
+}
+
 /// Joins an archive entry onto the destination, refusing to escape it.
 ///
 /// Rejects:
@@ -203,8 +238,19 @@ struct ZipEntry {
     external_attributes: u32,
 }
 
-/// Extracts a ZIP archive.
+/// Extracts a ZIP archive, keeping every entry.
 fn extract_zip(archive: &Path, destination: &Path) -> Result<Extraction> {
+    extract_zip_inner(archive, destination, None, None)
+}
+
+/// Extracts a ZIP archive, optionally filtering by entry prefix and reporting
+/// progress per entry.
+fn extract_zip_inner(
+    archive: &Path,
+    destination: &Path,
+    strip_top: Option<&str>,
+    progress: Option<&dyn Fn(usize, usize)>,
+) -> Result<Extraction> {
     let file = File::open(archive).map_err(|source| Error::io(archive, source))?;
     let mut reader = BufReader::new(file);
     let entries = read_central_directory(&mut reader, archive)?;
@@ -218,11 +264,30 @@ fn extract_zip(archive: &Path, destination: &Path) -> Result<Extraction> {
         ));
     }
 
-    for entry in entries {
-        let relative = safe_join(destination, &entry.name)?;
-        record_top_level(&mut extraction, &entry.name);
+    let count = entries.len();
+    for (index, entry) in entries.into_iter().enumerate() {
+        // Reported before the entry is examined, so the count covers entries
+        // that are filtered out - the fraction shown to the user is of the
+        // whole archive.
+        if let Some(report) = progress {
+            report(index + 1, count);
+        }
 
-        if entry.name.ends_with('/') || is_zip_directory(&entry) {
+        let name = match strip_top {
+            Some(prefix) => match entry.name.strip_prefix(prefix) {
+                Some(rest) => rest.to_owned(),
+                None => continue,
+            },
+            None => entry.name.clone(),
+        };
+        if name.is_empty() {
+            continue;
+        }
+
+        let relative = safe_join(destination, &name)?;
+        record_top_level(&mut extraction, &name);
+
+        if name.ends_with('/') || is_zip_directory(&entry) {
             fs::create_dir_all(&relative).map_err(|source| Error::io(&relative, source))?;
             extraction.directories += 1;
             continue;
@@ -757,6 +822,171 @@ mod tests {
             );
             assert!(!temp.path().join("evil.dll").exists());
         }
+    }
+
+    #[test]
+    fn strip_top_drops_entries_outside_the_wrapper() {
+        let temp = TempDir::new();
+        let archive = temp.path().join("apache.zip");
+        testutil::write_zip(
+            &archive,
+            &[
+                ("Apache24/", None),
+                ("Apache24/bin/httpd.exe", Some(b"MZ httpd".as_slice())),
+                ("Apache24/conf/httpd.conf", Some(b"# config".as_slice())),
+                (
+                    "Apache24/conf/extra/httpd-vhosts.conf",
+                    Some(b"# vhosts".as_slice()),
+                ),
+                // Outside the wrapper: skipped, not an error - the same
+                // archive carries files an installer does not want.
+                ("readme.txt", Some(b"Apache Lounge".as_slice())),
+                ("LICENSE", Some(b"Apache-2.0".as_slice())),
+                ("Apache24-notes/notes.txt", Some(b"almost".as_slice())),
+            ],
+        );
+
+        let destination = temp.path().join("out");
+        let extraction = extract_zip_with(&archive, &destination, Some("Apache24/"), None).unwrap();
+
+        assert_eq!(extraction.files, 3);
+        assert_eq!(
+            extraction.top_level,
+            vec!["bin".to_owned(), "conf".to_owned()]
+        );
+        assert!(destination.join("bin/httpd.exe").is_file());
+        assert!(destination.join("conf/httpd.conf").is_file());
+        assert!(destination.join("conf/extra/httpd-vhosts.conf").is_file());
+        assert!(
+            !destination.join("readme.txt").exists(),
+            "an entry outside the wrapper is skipped"
+        );
+        assert!(
+            !destination.join("Apache24-notes").exists(),
+            "a prefix that is not followed by a separator is not a match"
+        );
+        assert!(
+            !destination.join("Apache24").exists(),
+            "the wrapper is gone"
+        );
+    }
+
+    #[test]
+    fn an_entry_that_is_only_the_prefix_leaves_an_empty_name() {
+        let temp = TempDir::new();
+        let archive = temp.path().join("node.zip");
+        testutil::write_zip(
+            &archive,
+            &[
+                ("node-v22.0.0-win-x64/", None),
+                ("node-v22.0.0-win-x64/node.exe", Some(b"MZ node".as_slice())),
+                // A second entry whose whole name is the prefix without its
+                // trailing slash leaves nothing behind and is skipped.
+                ("node-v22.0.0-win-x64", None),
+            ],
+        );
+
+        let destination = temp.path().join("out");
+        let extraction =
+            extract_zip_with(&archive, &destination, Some("node-v22.0.0-win-x64/"), None).unwrap();
+
+        assert_eq!(extraction.files, 1);
+        assert!(destination.join("node.exe").is_file());
+    }
+
+    #[test]
+    fn extraction_progress_counts_every_entry_including_skipped_ones() {
+        let temp = TempDir::new();
+        let archive = temp.path().join("php.zip");
+        testutil::write_zip(
+            &archive,
+            &[
+                ("php/", None),
+                ("php/php.exe", Some(b"MZ".as_slice())),
+                ("php/php-cgi.exe", Some(b"MZ".as_slice())),
+                ("readme.txt", Some(b"skipped".as_slice())),
+            ],
+        );
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&seen);
+        let report = move |done: usize, total: usize| {
+            sink.lock().unwrap().push((done, total));
+        };
+
+        let destination = temp.path().join("out");
+        extract_zip_with(&archive, &destination, Some("php/"), Some(&report)).unwrap();
+
+        assert_eq!(
+            seen.lock().unwrap().clone(),
+            vec![(1, 4), (2, 4), (3, 4), (4, 4)],
+            "every entry is reported, in archive order"
+        );
+    }
+
+    #[test]
+    fn no_prefix_extracts_everything_at_the_top_level() {
+        let temp = TempDir::new();
+        let archive = temp.path().join("redis.zip");
+        testutil::write_zip(
+            &archive,
+            &[
+                ("redis-server.exe", Some(b"MZ".as_slice())),
+                ("redis-cli.exe", Some(b"MZ".as_slice())),
+            ],
+        );
+
+        let destination = temp.path().join("out");
+        let extraction = extract_zip_with(&archive, &destination, None, None).unwrap();
+        assert_eq!(extraction.files, 2);
+        assert!(destination.join("redis-server.exe").is_file());
+    }
+
+    #[test]
+    fn a_stripped_entry_that_escapes_the_destination_is_still_refused() {
+        let temp = TempDir::new();
+        // `strip_top` removes the wrapper, so the escape is written without
+        // it: the guard has to run on the stripped name, not the original.
+        let archive = temp.path().join("evil.zip");
+        testutil::write_zip(
+            &archive,
+            &[
+                ("pkg/", None),
+                ("pkg/../escaped.txt", Some(b"out".as_slice())),
+                ("../outside.txt", Some(b"out".as_slice())),
+            ],
+        );
+
+        let destination = temp.path().join("out");
+        let error = extract_zip_with(&archive, &destination, Some("pkg/"), None)
+            .expect_err("an entry that escapes must be refused");
+        assert!(matches!(error, Error::UnsafeArchiveEntry { .. }));
+        assert!(!destination.join("escaped.txt").exists());
+    }
+
+    #[test]
+    fn nested_directories_are_created_for_a_stripped_archive() {
+        let temp = TempDir::new();
+        let archive = temp.path().join("zig.zip");
+        testutil::write_zip(
+            &archive,
+            &[
+                ("zig/", None),
+                ("zig/doc/", None),
+                ("zig/doc/langref.html", Some(b"<html>ref</html>".as_slice())),
+                ("zig/doc/langref.txt", Some(b"ref".as_slice())),
+            ],
+        );
+
+        let destination = temp.path().join("out");
+        let extraction = extract_zip_with(&archive, &destination, Some("zig/"), None).unwrap();
+
+        assert_eq!(extraction.files, 2);
+        assert!(destination.join("doc/langref.html").is_file());
+        assert_eq!(
+            fs::read(destination.join("doc/langref.txt")).unwrap(),
+            b"ref"
+        );
     }
 
     #[test]

@@ -1,16 +1,16 @@
 # Configuration
 
-Three layers, applied in order. Nothing is hidden: `lambo config show` prints
-the effective result, and `lambo status` prints where the home came from.
+Two layers, applied in order. Nothing is hidden: `lambo config show` prints the
+effective result, and `lambo status` prints where the home came from.
 
 ```
 1. global      <home>/config/lambo.yml      machine-wide defaults
 2. project     <project>/lambo.yml          this project only
-3. state       <home>/data/services.yml     what is running right now
 ```
 
-A project file wins over the global one; runtime state never changes either -
-it only records observations.
+A project file wins over the global one. What is running is not a layer at all:
+the services are the engine's own state, read from the processes it holds, so
+there is no file that can disagree with them.
 
 ## The home directory
 
@@ -33,8 +33,7 @@ per-project directory and Lambo takes everything with it.
   projects/     projects Lambo created or adopted
   logs/         apache/ database/ php/ lambo/
   config/       lambo.yml, workspaces.yml, catalogs/
-  data/
-    services.yml  what Lambo started, with pids and ports
+  data/         generated my.cnf, httpd.conf and the manager's directory
 ```
 
 ### The download cache
@@ -235,7 +234,7 @@ extension:
 
 ```
 <home>/cache/artifacts/php-8.4.2-linux-x64.tar.gz
-<home>/cache/artifacts/apache-2.4.62-windows-x64.zip
+<home>/cache/artifacts/apache-2.4.68-windows-x64.zip
 ```
 
 The name is derived, never parsed from whatever the file happens to be called,

@@ -123,7 +123,11 @@ pub struct Lambofile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_browser: Option<bool>,
     /// PHP extensions to enable for this project.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_defaults::null_is_empty",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub extensions: Vec<String>,
     /// Extra environment values merged into generated `.env` files.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -497,6 +501,18 @@ mod tests {
         let loaded = Lambofile::load(temp.path()).unwrap().unwrap();
         assert_eq!(loaded, Lambofile::default());
         assert_eq!(loaded.server.document_root, ".");
+    }
+
+    #[test]
+    fn a_list_key_left_empty_is_an_empty_list() {
+        // `extensions:` with nothing after it is what someone writes when they
+        // mean to fill the list in later. YAML reads that as null, and the file
+        // is one a user edits by hand, so it must not be a parse error.
+        let temp = TempDir::new();
+        fs::write(temp.path().join(FILE_NAME), "name: shop\nextensions:\n").unwrap();
+        let loaded = Lambofile::load(temp.path()).unwrap().unwrap();
+        assert!(loaded.extensions.is_empty());
+        assert_eq!(loaded.name.as_deref(), Some("shop"));
     }
 
     #[test]

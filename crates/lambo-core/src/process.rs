@@ -6,14 +6,21 @@
 //! right on Windows is where most XAMPP alternatives fall over, so the rules
 //! here are explicit:
 //!
-//! - Services are started **detached**: on Windows with `DETACHED_PROCESS |
-//!   CREATE_NEW_PROCESS_GROUP`, on Unix with `process_group(0)`. A service
-//!   therefore never dies because the terminal that started it closed, and
-//!   never shares a console with the CLI.
+//! - Services outlive the interface that started them. One shape writes to
+//!   log files and is started **detached**: on Windows with `DETACHED_PROCESS
+//!   | CREATE_NEW_PROCESS_GROUP`, on Unix with `process_group(0)`. The other
+//!   shape streams its output through the engine and is released, not held,
+//!   when the interface exits. Either way a service never dies because the
+//!   terminal that started it closed, and never shares a console with the CLI.
 //! - Short-lived helper commands (`php -v`, `httpd -t`) are started with
 //!   `CREATE_NO_WINDOW` on Windows so they do not flash a console window.
-//! - Output of services is redirected to a log file, never inherited, so a
-//!   detached process can never block on a closed console handle.
+//! - A service's standard streams are never the interface's own: a detached
+//!   service gets log files or NUL, a supervised service ([`spawn_service`])
+//!   gets pipes the engine created for it. On Windows both go through the
+//!   handle-allowlisted launcher, because a plain `Command::spawn` hands a
+//!   child every inheritable handle the interface owns - and a service
+//!   outlives the interface, holding anything it inherited open until it
+//!   stops. A capturing caller would wait for EOF forever.
 //! - Stopping is a two-step escalation: ask the service to shut down the way
 //!   its own documentation describes, wait, then terminate the process tree.
 //!   Nothing is ever killed blindly - see [`stop`].
@@ -31,6 +38,16 @@ use std::time::{Duration, Instant};
 use crate::error::{Error, Result};
 use crate::platform::Os;
 
+/// Owned child process; dropping it never terminates the service.
+#[cfg(windows)]
+pub use lambo_process_windows::Child;
+#[cfg(not(windows))]
+pub use std::process::Child;
+
+#[cfg(windows)]
+#[path = "process/windows.rs"]
+mod windows;
+
 /// Windows process creation flags (winbase.h).
 ///
 /// Declared locally so the crate needs no `windows` dependency for them.
@@ -43,25 +60,30 @@ mod flags {
     /// The child starts in its own process group, so `taskkill /T` and
     /// console control events can address it as a unit.
     pub const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    /// The child is a console application that should not create a window.
+    /// The child gets no console window.
+    ///
+    /// A console program started by a windowed process - which Lambo's GUI is -
+    /// would otherwise have a console allocated for it, flashing a black window
+    /// over the interface for every helper command.
     pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    /// The child gets a console window of its own.
+    ///
+    /// For the two consoles the panel opens - a language's terminal and the
+    /// PostgreSQL console - the window *is* the feature, so it is shown instead
+    /// of suppressed.
+    pub const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
 }
 
 /// Where a spawned process writes its standard output or error.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Output {
     /// Inherit the parent's handle (interactive commands only).
     Inherit,
     /// Discard.
+    #[default]
     Null,
     /// Append to a log file, creating it when needed.
     File(PathBuf),
-}
-
-impl Default for Output {
-    fn default() -> Self {
-        Self::Null
-    }
 }
 
 /// A process to start, described platform-independently.
@@ -83,6 +105,12 @@ pub struct ProcessSpec {
     pub stderr: Output,
     /// Start the process detached from this CLI invocation.
     pub detached: bool,
+    /// Give the process a console window of its own.
+    ///
+    /// Only the interfaces set this, and only for a console the user is meant
+    /// to type into: a helper that merely returns output keeps the console
+    /// suppressed. Detached wins: a detached child has no console to show.
+    pub new_console: bool,
     /// Human-readable name used in messages and logs.
     pub name: String,
 }
@@ -100,6 +128,16 @@ impl ProcessSpec {
     /// Appends one argument.
     pub fn arg(mut self, argument: impl Into<String>) -> Self {
         self.args.push(argument.into());
+        self
+    }
+
+    /// Gives the process a console window of its own.
+    ///
+    /// The child is the user's to drive, so its console is shown rather than
+    /// suppressed, and it is left attached to this process: closing the panel
+    /// is when an interactive console should go away.
+    pub fn console(mut self) -> Self {
+        self.new_console = true;
         self
     }
 
@@ -176,12 +214,24 @@ impl ProcessSpec {
 
 /// Starts a process.
 ///
-/// Returns the [`std::process::Child`] so callers can wait for exit or record
+/// Returns the [`Child`] so callers can wait for exit or record
 /// the PID. For services, drop the handle after recording the PID: the child
 /// keeps running because it was started detached.
-pub fn spawn(spec: &ProcessSpec, os: Os) -> Result<std::process::Child> {
-    let mut command = build_command(spec, os)?;
-    command.spawn().map_err(|source| Error::ServiceFailed {
+pub fn spawn(spec: &ProcessSpec, os: Os) -> Result<Child> {
+    #[cfg(windows)]
+    let spawned = if spec.detached {
+        windows::spawn_detached(spec)?
+    } else {
+        build_command(spec, os)?.spawn().map(Child::from)
+    };
+    #[cfg(not(windows))]
+    let spawned = build_command(spec, os)?.spawn();
+    spawned.map_err(|source| start_failure(spec, source))
+}
+
+/// The error a failed start reports, whatever the spawning path.
+fn start_failure(spec: &ProcessSpec, source: std::io::Error) -> Error {
+    Error::ServiceFailed {
         service: spec.name.clone(),
         reason: format!("could not start `{}`: {source}", spec.program.display()),
         causes: vec![
@@ -190,7 +240,60 @@ pub fn spawn(spec: &ProcessSpec, os: Os) -> Result<std::process::Child> {
             format!("run `lambo doctor` to inspect the installation"),
         ],
         hint: Some("lambo doctor".to_owned()),
-    })
+    }
+}
+
+/// A service process the engine supervises while streaming its output.
+pub struct ServiceChild {
+    /// The child; dropping it never terminates the service.
+    pub child: Child,
+    /// The child's process ID.
+    pub pid: u32,
+    /// The child's standard output, to stream.
+    pub stdout: Box<dyn std::io::Read + Send>,
+    /// The child's standard error, to stream.
+    pub stderr: Box<dyn std::io::Read + Send>,
+}
+
+/// Starts a long-lived service whose output the engine streams.
+///
+/// Unlike [`spawn_piped`], whose children are short-lived helpers the caller
+/// waits out, a service outlives the interface that started it. Everything it
+/// inherits outlives that interface too, so on Windows it is started through
+/// the handle-allowlisted launcher and receives nothing but its own streams;
+/// see the `windows` adapter module and the module documentation. The stream
+/// ends it receives are pipes created here: its output can never reach the
+/// interface's own standard streams, and the interface's captures can never
+/// stay open behind its back.
+pub fn spawn_service(spec: &ProcessSpec, _os: Os) -> Result<ServiceChild> {
+    #[cfg(windows)]
+    {
+        let piped = windows::spawn_service(spec).map_err(|source| start_failure(spec, source))?;
+        let pid = piped.child.id();
+        Ok(ServiceChild {
+            child: piped.child,
+            pid,
+            stdout: Box::new(piped.stdout),
+            stderr: Box::new(piped.stderr),
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = build_command(spec, _os)?;
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = command
+            .spawn()
+            .map_err(|source| start_failure(spec, source))?;
+        let pid = child.id();
+        let stdout = child.stdout.take().expect("standard output is piped above");
+        let stderr = child.stderr.take().expect("standard error is piped above");
+        Ok(ServiceChild {
+            child,
+            pid,
+            stdout: Box::new(stdout),
+            stderr: Box::new(stderr),
+        })
+    }
 }
 
 /// Starts a process and waits for it, capturing its output.
@@ -228,6 +331,13 @@ fn build_command(spec: &ProcessSpec, os: Os) -> Result<Command> {
     command.stderr(stdio_for(&spec.stderr)?);
 
     apply_platform_flags(&mut command, spec, os);
+    // A helper whose output is captured has nothing to say to a window nobody
+    // asked for - and started from the GUI, which has no console of its own, a
+    // console program would otherwise have one allocated for it. A console the
+    // user asked for is the exception.
+    if !spec.detached && !spec.new_console {
+        hide_console(&mut command, os);
+    }
     Ok(command)
 }
 
@@ -254,12 +364,11 @@ fn stdio_for(output: &Output) -> Result<Stdio> {
 #[cfg(windows)]
 fn apply_platform_flags(command: &mut Command, spec: &ProcessSpec, _os: Os) {
     use std::os::windows::process::CommandExt;
-    let flags = if spec.detached {
-        flags::DETACHED_PROCESS | flags::CREATE_NEW_PROCESS_GROUP
-    } else {
-        flags::CREATE_NO_WINDOW
-    };
-    command.creation_flags(flags);
+    if spec.detached {
+        command.creation_flags(flags::DETACHED_PROCESS | flags::CREATE_NEW_PROCESS_GROUP);
+    } else if spec.new_console {
+        command.creation_flags(flags::CREATE_NEW_CONSOLE);
+    }
 }
 
 /// Applies the platform-specific process flags.
@@ -270,6 +379,81 @@ fn apply_platform_flags(command: &mut Command, spec: &ProcessSpec, _os: Os) {
         // A new session detaches the child from the controlling terminal, so
         // closing the terminal (or Ctrl+C in it) does not take services down.
         command.process_group(0);
+    }
+}
+
+/// Starts a short-lived helper process whose output is read by the caller.
+///
+/// The child's standard output and error are pipes rather than files, which is
+/// what [`spawn`] cannot offer: the Windows launcher hands a detached child
+/// real file handles (so a service's log cannot be a pipe), while a download
+/// needs the bytes as they arrive. Its console window is suppressed, for the
+/// reason the module documentation gives: a helper has nothing to say to a
+/// window the user did not ask for.
+///
+/// The caller owns the returned child and must wait for it.
+pub fn spawn_piped(spec: &ProcessSpec, os: Os) -> Result<std::process::Child> {
+    let mut command = Command::new(&spec.program);
+    command.args(&spec.args);
+    if let Some(cwd) = &spec.cwd {
+        command.current_dir(cwd);
+    }
+    for (key, value) in &spec.env {
+        command.env(key, value);
+    }
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    hide_console(&mut command, os);
+
+    command.spawn().map_err(|source| Error::ServiceFailed {
+        service: spec.name.clone(),
+        reason: format!("could not start `{}`: {source}", spec.program.display()),
+        causes: vec![
+            "the executable is missing or not runnable".to_owned(),
+            format!(
+                "`{}` must be available for this command",
+                spec.program.display()
+            ),
+            "run `lambo doctor` to inspect the installation".to_owned(),
+        ],
+        hint: Some("lambo doctor".to_owned()),
+    })
+}
+
+/// Suppresses the console window of a helper process on Windows.
+#[cfg(windows)]
+fn hide_console(command: &mut Command, _os: Os) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(flags::CREATE_NO_WINDOW);
+}
+
+/// Suppresses the console window of a helper process on Windows.
+#[cfg(not(windows))]
+fn hide_console(_command: &mut Command, _os: Os) {}
+
+/// A process's combined output, trimmed, with empty streams dropped.
+///
+/// The original captured both streams into one buffer with `CombinedOutput`.
+/// They are read separately here, so a message that arrives on standard error -
+/// which is where every helper of this kind writes - is still reported.
+pub fn combined_output(output: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => stdout,
+        (true, false) => stderr,
+        (false, false) => format!("{stdout}\n{stderr}"),
+    }
+}
+
+/// How a process ended, as one line: `exit status 1`, or a signal.
+pub fn describe_exit(output: &std::process::Output) -> String {
+    match output.status.code() {
+        Some(code) => format!("exit status {code}"),
+        None => "terminated by a signal".to_owned(),
     }
 }
 
@@ -645,6 +829,41 @@ pub fn terminate_tree(pid: u32, os: Os, force: bool) -> Result<()> {
     Ok(())
 }
 
+/// Terminates one process, and only that one.
+///
+/// The fallback when [`terminate_tree`] refuses, which is the original's
+/// `cmd.Process.Kill()`: the tree kill is scoped by the operating system to a
+/// process and its descendants, while this names a single PID. It is *not* the
+/// first thing to reach for - see the note on `taskkill /T` above - but it is
+/// the strongest thing this process may do without guessing.
+pub fn kill_process_now(pid: u32, os: Os) -> Result<()> {
+    if os.is_windows() {
+        let mut command = Command::new("taskkill");
+        command
+            .arg("/F")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let output = command.output().map_err(|source| Error::ServiceFailed {
+            service: "taskkill".to_owned(),
+            reason: format!("could not run `taskkill`: {source}"),
+            causes: vec!["the process may already be gone".to_owned()],
+            hint: Some("lambo doctor".to_owned()),
+        })?;
+        if output.status.success() {
+            return Ok(());
+        }
+        return Err(Error::InvalidInput(format!(
+            "taskkill /F /PID {pid}: {}",
+            describe_exit(&output)
+        )));
+    }
+
+    signal_pid(&pid.to_string(), "-KILL");
+    Ok(())
+}
+
 /// Runs `kill <signal> <target>`, ignoring the exit status.
 ///
 /// `kill` exits non-zero when the target has already disappeared, which is
@@ -912,7 +1131,11 @@ mod tests {
         let pid = child.id();
         assert!(wait_until_running(pid, os, Duration::from_secs(5)));
 
-        let first = identity(pid, os).expect("a running process has an identity");
+        // `identity_settled` is what the start paths use: a raw probe can land
+        // in the fork/exec window and read Lambo's own image name, which no
+        // later probe agrees with.
+        let first = identity_settled(pid, os, &spec.program, Duration::from_secs(5))
+            .expect("a running process has an identity");
         let second = identity(pid, os).expect("and it can be read again");
         assert_eq!(first.pid, pid);
         assert!(
@@ -970,7 +1193,12 @@ mod tests {
         let pid = child.id();
         assert!(wait_until_running(pid, os, Duration::from_secs(5)));
 
-        let recorded = identity(pid, os).expect("identity at start-up");
+        // The settled read is the one a start path records, and it is the
+        // difference between `NotOurs` and a stopped service: read inside the
+        // fork/exec window, the identity carries Lambo's own image name and
+        // nothing may be signalled.
+        let recorded = identity_settled(pid, os, &spec.program, Duration::from_secs(5))
+            .expect("identity at start-up");
         let outcome =
             stop_verified(pid, Some(&recorded), os, None, Duration::from_secs(10)).unwrap();
         assert!(outcome.stopped(), "{outcome:?}");

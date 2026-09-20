@@ -9,6 +9,11 @@ repository.workspace = true
 homepage.workspace = true
 publish = false
 
+[features]
+# The test scaffolding in `src/testutil.rs`, for an interface crate's unit
+# tests. Off by default: nothing the engine ships needs it.
+testutil = []
+
 [dependencies]
 serde.workspace = true
 serde_yaml.workspace = true
@@ -29,6 +34,9 @@ crc32fast.workspace = true
 [[bin]]
 name = "lambo-fixture-server"
 path = "tests/fixtures/fixture_server/main.rs"
+
+[target.'cfg(windows)'.dependencies]
+lambo-process-windows = { path = "../lambo-process-windows" }
 
 [dev-dependencies]
 # Only for tests: the public API hands out `InstalledRuntime`, whose `version`

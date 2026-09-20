@@ -1,0 +1,25 @@
+[package]
+name = "lambo-process-windows"
+description = "Private Win32 boundary for lambo-core: handle-allowlisted service launching, the user PATH and elevation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_Pipes",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Globalization",
+] }
+
+# The engine retains forbid(unsafe_code). Only this Win32 FFI boundary opts out.
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"

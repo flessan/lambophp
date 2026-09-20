@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "services": [
+    {
+      "name": "Apache",
+      "kind": "web",
+      "exe": "{base}/bin/apache/bin/httpd.exe",
+      "port": 80,
+      "workdir": "{base}/bin/apache",
+      "config_file": "{base}/bin/apache/conf/httpd.conf",
+      "enabled": true
+    },
+    {
+      "name": "Nginx",
+      "kind": "web",
+      "exe": "{base}/bin/nginx/nginx.exe",
+      "port": 8080,
+      "workdir": "{base}/bin/nginx",
+      "config_file": "{base}/bin/nginx/conf/nginx.conf",
+      "enabled": false
+    },
+    {
+      "name": "PHP-FPM",
+      "kind": "php",
+      "exe": "{base}/bin/php/php-cgi.exe",
+      "args": [
+        "-b",
+        "127.0.0.1:9000"
+      ],
+      "port": 9000,
+      "workdir": "{base}/bin/php",
+      "config_file": "{base}/bin/php/php.ini",
+      "enabled": false
+    },
+    {
+      "name": "MySQL",
+      "kind": "database",
+      "exe": "{base}/bin/mysql/bin/mysqld.exe",
+      "args": [
+        "--console",
+        "--basedir={base}/bin/mysql",
+        "--datadir={base}/bin/mysql/data"
+      ],
+      "port": 3306,
+      "workdir": "{base}/bin/mysql",
+      "config_file": "{base}/bin/mysql/my.ini",
+      "enabled": true
+    },
+    {
+      "name": "PostgreSQL",
+      "kind": "database",
+      "exe": "{base}/bin/pgsql/bin/postgres.exe",
+      "args": [
+        "-D",
+        "{base}/bin/pgsql/data"
+      ],
+      "port": 5432,
+      "workdir": "{base}/bin/pgsql/bin",
+      "config_file": "{base}/bin/pgsql/data/postgresql.conf",
+      "enabled": false
+    },
+    {
+      "name": "Redis",
+      "kind": "cache",
+      "exe": "{base}/bin/redis/redis-server.exe",
+      "args": [
+        "{base}/bin/redis/redis.windows.conf"
+      ],
+      "port": 6379,
+      "workdir": "{base}/bin/redis",
+      "config_file": "{base}/bin/redis/redis.windows.conf",
+      "enabled": false
+    },
+    {
+      "name": "phpMyAdmin",
+      "kind": "tool",
+      "enabled": true,
+      "open_url": "http://localhost/phpmyadmin/"
+    },
+    {
+      "name": "Adminer",
+      "kind": "tool",
+      "enabled": true,
+      "open_url": "http://localhost/adminer/"
+    },
+    {
+      "name": "Composer",
+      "kind": "tool",
+      "enabled": true
+    },
+    {
+      "name": "pgweb",
+      "kind": "web",
+      "exe": "{base}/bin/pgweb/pgweb.exe",
+      "args": [
+        "--bind=127.0.0.1",
+        "--listen=8081",
+        "--url=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
+        "--skip-open"
+      ],
+      "port": 8081,
+      "workdir": "{base}/bin/pgweb",
+      "enabled": false,
+      "open_url": "http://localhost:8081/"
+    },
+    {
+      "name": "Erlang",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "RabbitMQ",
+      "kind": "queue",
+      "exe": "cmd.exe",
+      "args": [
+        "/c",
+        "{base}/bin/rabbitmq/sbin/rabbitmq-server.bat"
+      ],
+      "port": 5672,
+      "workdir": "{base}/bin/rabbitmq",
+      "enabled": false,
+      "open_url": "http://localhost:15672/",
+      "env": [
+        "ERLANG_HOME={base}/bin/erlang",
+        "RABBITMQ_BASE={base}/data/rabbitmq",
+        "RABBITMQ_NODENAME=rabbit@localhost"
+      ]
+    },
+    {
+      "name": "MinIO",
+      "kind": "storage",
+      "exe": "{base}/bin/minio/minio.exe",
+      "args": [
+        "server",
+        "{base}/data/minio",
+        "--address",
+        ":9010",
+        "--console-address",
+        ":9011"
+      ],
+      "port": 9010,
+      "workdir": "{base}/bin/minio",
+      "enabled": false,
+      "open_url": "http://localhost:9011/"
+    },
+    {
+      "name": "Mailpit",
+      "kind": "mail",
+      "exe": "{base}/bin/mailpit/mailpit.exe",
+      "port": 8025,
+      "workdir": "{base}/bin/mailpit",
+      "enabled": false,
+      "open_url": "http://localhost:8025/"
+    },
+    {
+      "name": "Node.js",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Python",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Go",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Java",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Julia",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Zig",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Dart",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Lua",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Ruby",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Rust",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Kotlin",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Haskell",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Elixir",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Crystal",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Scala",
+      "kind": "runtime",
+      "enabled": false
+    },
+    {
+      "name": "Swift",
+      "kind": "runtime",
+      "enabled": false
+    }
+  ],
+  "vhosts": [
+    {
+      "domain": "myapp.test",
+      "docroot": "{base}/www/myapp",
+      "port": 80,
+      "server_type": "apache",
+      "enabled": false
+    }
+  ],
+  "projects": null,
+  "settings": {
+    "auto_start": [],
+    "hosts_file": "",
+    "apache_vhosts_include": "{base}/conf/apache/vhosts.conf",
+    "nginx_sites_dir": "{base}/conf/nginx/sites",
+    "active_web_server": "Apache"
+  }
+}

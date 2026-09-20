@@ -1,0 +1,30 @@
+# Test modules the `windows-behaviour` job in .github/workflows/ci.yml is
+# written to cover - one module path per line, `#` for a comment.
+#
+# Why this file exists: `cargo test -- <filter>` matches each filter token as a
+# *substring* of the full test name, `<module path>::tests::<test function>`, and
+# a filter that matches fewer tests than it should still exits 0. There is no
+# failure to notice - a job that was written to run 250 Windows-behaviour tests
+# runs 167 and reports success. So the intent is written down here, and
+# scripts/local-check/check-ci-filter.py checks the workflow against it.
+#
+# Adding a module with tests to this list is a claim that the job should run
+# them; the script then requires the workflow's filter to select them.
+#
+# The first column is the module path; anything after it is ignored.
+
+platform          paths, executable resolution, environment
+process           spawning, tree cleanup, console handling
+port              allocation and detection
+paths             path shapes and normalisation
+runtime           runtime discovery and installation
+fsx               filesystem operations: atomic writes, copies, removal
+archive           zip and tar extraction, traversal safety
+state             the window's own state (`lambo_gui::state`)
+ui_state          the engine's page, control and layout model
+console           Windows console mode and the language bin directories
+stack             the orchestration `up` and `down` drive
+tray              autostart and the tray menu's command mapping
+pathenv           the PATH registry edits
+apache            httpd.conf generation and the vhost include
+database          the database engines' configuration

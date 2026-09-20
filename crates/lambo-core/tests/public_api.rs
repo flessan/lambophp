@@ -36,7 +36,6 @@ use lambo_core::port;
 use lambo_core::process::{self, Output, ProcessSpec};
 use lambo_core::runtime::{self, InstalledRuntime, RuntimeKind};
 use lambo_core::session::{self, Context};
-use lambo_core::state::{ServiceRecord, State, names};
 use lambo_core::version::VersionSpec;
 
 /// A temporary directory that removes itself.
@@ -158,7 +157,6 @@ fn configuration_paths_are_stable_and_inside_the_home() {
 
     for path in [
         paths.config_file(),
-        paths.state_file(),
         paths.workspaces_file(),
         paths.apache_config_file(),
         paths.database_config_file(),
@@ -175,7 +173,6 @@ fn configuration_paths_are_stable_and_inside_the_home() {
 
     // One file per purpose, with the documented names.
     assert_eq!(paths.config_file().file_name().unwrap(), "lambo.yml");
-    assert_eq!(paths.state_file().file_name().unwrap(), "services.yml");
     assert_eq!(
         paths.apache_config_file().file_name().unwrap(),
         "httpd.conf"
@@ -368,10 +365,14 @@ fn the_database_manager_url_carries_no_password() {
 fn sleeper(seconds: u32) -> ProcessSpec {
     #[cfg(windows)]
     {
-        ProcessSpec::new("C:\\Windows\\System32\\timeout.exe", "sleeper")
-            .arg("/t")
-            .arg(seconds.to_string())
-            .arg("/nobreak")
+        // `timeout.exe` refuses to run without a console ("Input redirection
+        // is not supported") and dies the moment it is started detached with
+        // its standard input on NUL. `ping` never reads its input, so it
+        // idles headless for as long as it is asked.
+        ProcessSpec::new("C:\\Windows\\System32\\ping.exe", "sleeper")
+            .arg("-n")
+            .arg((seconds + 1).to_string())
+            .arg("127.0.0.1")
     }
     #[cfg(not(windows))]
     {
@@ -431,7 +432,12 @@ fn stopping_one_service_leaves_every_other_process_alone() {
         Duration::from_secs(5)
     ));
 
-    process::terminate_tree(mine_pid, os, false).unwrap();
+    // Forced, not polite: on Windows the polite tree kill is delivered as
+    // WM_CLOSE, and a detached child has no window that could receive it -
+    // nothing short of /F will terminate one. The polite mode keeps its
+    // coverage through `process::stop` in the test above. The point here is
+    // the scoping of a tree kill, not its manners.
+    process::terminate_tree(mine_pid, os, true).unwrap();
     assert!(process::wait_until_gone(
         mine_pid,
         os,
@@ -484,57 +490,57 @@ fn the_first_free_port_wins() {
 }
 
 // ---------------------------------------------------------------------------
-// Service lifecycle and state
+// Service lifecycle
 // ---------------------------------------------------------------------------
 
+/// The installation, as `lambo up` and the GUI both see it.
+///
+/// The state file this used to assert about is gone: the services are the
+/// engines now, and [`lambo_core::stack`] is where their behaviour is tested.
+/// What is worth asserting through the public surface is the wiring - that the
+/// document on disk becomes exactly the cards an interface shows, with an engine
+/// only where the configuration names an executable.
 #[test]
-fn recorded_services_round_trip_and_dead_ones_are_pruned() {
+fn the_installation_is_the_configured_stack() {
     let temp = TempDir::new();
-    let paths = temp.home();
-    let os = Os::host();
+    let context = Context {
+        paths: temp.home(),
+        config: Config::default(),
+        catalog: Catalog::embedded().unwrap(),
+        platform: Platform::host(),
+        downloader: &lambo_core::download::CurlDownloader,
+        os: Os::host(),
+        log: lambo_core::logs::nop_log(),
+    };
 
-    let mut state = State::load(&paths).unwrap();
-    assert!(state.is_empty(), "a fresh home has no services");
+    let installation = session::installation(&context).expect("the installation loads");
+    let cards = installation.stack.services();
 
-    // A pid that is certainly not ours: high enough to be unlikely, and never
-    // spawned, so liveness has to come from observation rather than the record.
-    let ghost = ServiceRecord::new(names::APACHE, 4_000_001, "httpd -k start")
-        .with_port(8080)
-        .with_log(logs::apache(&paths));
-    state.record(ghost.clone());
-    state.save(&paths).unwrap();
-
-    let reloaded = State::load(&paths).unwrap();
-    let record = reloaded
-        .get(names::APACHE)
-        .expect("the record must survive a reload");
-    assert_eq!(record.pid, 4_000_001);
-    assert_eq!(record.port, Some(8080));
+    assert_eq!(cards.len(), installation.config.services.len());
     assert!(
-        !record.is_alive(os),
-        "a process nobody started is not alive"
+        cards.iter().all(|card| card.name() == card.conf().name),
+        "a card is named by the configuration it came from"
     );
-    assert_eq!(record.state_word_for_test(), "stopped");
-
-    // Pruning is what keeps `lambo down` from chasing ghosts forever.
-    let mut reloaded = reloaded;
-    assert!(reloaded.prune_dead(os), "a dead record must be pruned");
-    assert!(reloaded.is_empty());
-}
-
-/// The words `lambo status` prints, asserted through the public type.
-trait StateWord {
-    fn state_word_for_test(&self) -> &'static str;
-}
-
-impl StateWord for ServiceRecord {
-    fn state_word_for_test(&self) -> &'static str {
-        if self.is_alive(Os::host()) {
-            "running"
-        } else {
-            "stopped"
-        }
+    for card in cards {
+        let configured = installation
+            .config
+            .services
+            .iter()
+            .find(|service| service.name == card.name())
+            .expect("the card came from a configured service");
+        assert_eq!(
+            card.service().is_some(),
+            !configured.exe.is_empty(),
+            "only a service with an executable has an engine: {}",
+            card.name()
+        );
+        assert!(!card.running(), "a home that was just read runs nothing");
     }
+
+    // The names the interfaces attribute a failure to are the configuration's.
+    assert!(session::ALL_SERVICES.contains(&"Apache"));
+    assert!(session::WEB_SERVICES.contains(&"Nginx"));
+    assert!(session::DATABASE_SERVICES.contains(&"MySQL"));
 }
 
 #[test]
@@ -548,9 +554,10 @@ fn shutting_down_an_empty_home_reports_nothing_rather_than_failing() {
         platform: Platform::host(),
         downloader: &lambo_core::download::CurlDownloader,
         os: Os::host(),
+        log: lambo_core::logs::nop_log(),
     };
 
-    let report = session::down(&mut context).unwrap();
+    let report = session::down(None, &mut context).unwrap();
     assert!(report.steps.is_empty(), "{:?}", report.steps);
 
     let status = session::status(None, &mut context).unwrap();
@@ -832,9 +839,9 @@ fn the_catalogue_offers_php_for_every_supported_platform() {
 
 #[test]
 fn downloads_are_refused_without_a_way_to_verify_them() {
-    // Every shipped entry has `sha256: null`, which means "fetch the sidecar".
-    // Where no sidecar exists the download fails closed - that is the promise,
-    // and this asserts it is still the shape of the data.
+    // A shipped entry is either pinned with a digest or sent to look for the
+    // upstream sidecar; where neither exists the download fails closed - that
+    // is the promise, and this asserts the transport half of it.
     let catalog = Catalog::embedded().unwrap();
     let releases = catalog.available(Family::Php, "windows-x64");
     let release = releases

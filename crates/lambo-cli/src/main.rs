@@ -15,6 +15,18 @@ mod ui;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    // `lambo --hide-run <program> [args...]` is how a detached server is
+    // started from a hidden window: it is not a command, so it never reaches the
+    // parser. The exit status is 0 whatever happens, as the original's was - the
+    // launcher reads the PID file and reports the failure from there.
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(result) = lambo_core::service::hide_run_from_argv(&argv) {
+        if let Err(err) = result {
+            ui::report_error(&err.into());
+        }
+        return ExitCode::SUCCESS;
+    }
+
     match cli::run() {
         Ok(code) => code,
         Err(err) => {

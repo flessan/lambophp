@@ -16,6 +16,21 @@
     "neither is available the download is refused. Nothing is ever extracted",
     "or executed before it has been verified.",
     "",
+    "What is pinned below was pinned from the publisher's own checksum",
+    "documents on 2026-09-20: windows.php.net sidecars for PHP, the signed",
+    "sha256sums.txt files on archive.mariadb.org for MariaDB, the sidecar on",
+    "files.phpmyadmin.net for phpMyAdmin, and the checksum file Apache Lounge",
+    "publishes next to each httpd build. Entries left at null have no digest",
+    "their publisher exposes in a usable form; they verify through the",
+    "sidecar rule above, or fail closed until a digest is pinned here or in",
+    "an override file. The dashboard panel keeps its own component table and",
+    "resolves the newest Apache Lounge build dynamically.",
+    "",
+    "Windows Apache note: the Apache HTTP Server project distributes source",
+    "code only; the win64 binaries are Apache Lounge builds, so that is what",
+    "this entry points at. The URL embeds the build date, which keeps it",
+    "stable for this pinned version.",
+    "",
     "Platform keys are <os>-<arch>: windows-x64, linux-x64, linux-arm64,",
     "macos-x64, macos-arm64. See docs/installation.md."
   ],
@@ -24,7 +39,7 @@
       "version": "8.4.2",
       "platform": "windows-x64",
       "url": "https://windows.php.net/downloads/releases/archives/php-8.4.2-Win32-vs17-x64.zip",
-      "sha256": null
+      "sha256": "b1abb5c9abe4efc2f247e660968991f0dfe3192a3973a3e5fade1752d452d0f1"
     },
     {
       "version": "8.3.16",
@@ -71,16 +86,10 @@
   ],
   "apache": [
     {
-      "version": "2.4.62",
+      "version": "2.4.68",
       "platform": "windows-x64",
-      "url": "https://dlcdn.apache.org/httpd/binaries/win32/httpd-2.4.62-win64-VS17.zip",
-      "sha256": null
-    },
-    {
-      "version": "2.4.58",
-      "platform": "windows-x64",
-      "url": "https://archive.apache.org/dist/httpd/binaries/win32/httpd-2.4.58-win64-VS16.zip",
-      "sha256": null
+      "url": "https://www.apachelounge.com/download/VS18/binaries/httpd-2.4.68-260827-Win64-VS18.zip",
+      "sha256": "a6b7de9fdccb28456f5b1f884920fe0b2425aadfca25c63ae1c0969d43bb355b"
     }
   ],
   "mariadb": [
@@ -88,25 +97,19 @@
       "version": "11.4.4",
       "platform": "windows-x64",
       "url": "https://archive.mariadb.org/mariadb-11.4.4/winx64-packages/mariadb-11.4.4-winx64.zip",
-      "sha256": null
+      "sha256": "ee15985d5d0f604fce817986a2749bb972e79e6f8647ae0e09d821a2fdcd6373"
     },
     {
       "version": "10.11.10",
       "platform": "windows-x64",
       "url": "https://archive.mariadb.org/mariadb-10.11.10/winx64-packages/mariadb-10.11.10-winx64.zip",
-      "sha256": null
+      "sha256": "5626478891370011b568e3776ba76d840846c2a08261b14b82de97f0608311cf"
     },
     {
       "version": "11.4.4",
       "platform": "linux-x64",
       "url": "https://archive.mariadb.org/mariadb-11.4.4/bintar-linux-systemd-x86_64/mariadb-11.4.4-linux-systemd-x86_64.tar.gz",
-      "sha256": null
-    },
-    {
-      "version": "11.4.4",
-      "platform": "linux-arm64",
-      "url": "https://archive.mariadb.org/mariadb-11.4.4/bintar-linux-systemd-aarch64/mariadb-11.4.4-linux-systemd-aarch64.tar.gz",
-      "sha256": null
+      "sha256": "c9f26fd8c37a97458310fb577d6cc3bce44cf048c0e6ce014ee6ae157ebc1697"
     }
   ],
   "mysql": [
@@ -122,7 +125,7 @@
       "version": "5.2.3",
       "platform": "windows-x64",
       "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
-      "sha256": null,
+      "sha256": "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f",
       "checksum_url": null,
       "archive_format": "zip",
       "filename": "phpMyAdmin-5.2.3-all-languages.zip"
@@ -131,7 +134,7 @@
       "version": "5.2.3",
       "platform": "linux-x64",
       "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
-      "sha256": null,
+      "sha256": "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f",
       "checksum_url": null,
       "archive_format": "zip",
       "filename": "phpMyAdmin-5.2.3-all-languages.zip"
@@ -140,7 +143,7 @@
       "version": "5.2.3",
       "platform": "linux-arm64",
       "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
-      "sha256": null,
+      "sha256": "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f",
       "checksum_url": null,
       "archive_format": "zip",
       "filename": "phpMyAdmin-5.2.3-all-languages.zip"
@@ -149,7 +152,7 @@
       "version": "5.2.3",
       "platform": "macos-x64",
       "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
-      "sha256": null,
+      "sha256": "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f",
       "checksum_url": null,
       "archive_format": "zip",
       "filename": "phpMyAdmin-5.2.3-all-languages.zip"
@@ -158,7 +161,7 @@
       "version": "5.2.3",
       "platform": "macos-arm64",
       "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
-      "sha256": null,
+      "sha256": "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f",
       "checksum_url": null,
       "archive_format": "zip",
       "filename": "phpMyAdmin-5.2.3-all-languages.zip"

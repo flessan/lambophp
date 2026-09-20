@@ -92,18 +92,18 @@ pub fn run(ui: &Ui, command: WorkspaceCommand) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Turns the optional arguments into an absolute project path and a name.
+/// Turns the optional arguments into a project path and a name.
+///
+/// The path is recorded as given: which absolute path a project is filed
+/// under is [`Workspaces::key`]'s rule, not the interface's.
 fn resolve(
     path: Option<String>,
     workspace: Option<String>,
 ) -> Result<(String, std::path::PathBuf)> {
-    let dir = match path {
+    let project = match path {
         Some(path) => std::path::PathBuf::from(path),
         None => super::current_dir()?,
     };
-    // Canonicalizing makes the registry stable: `lambo workspace add .` from
-    // two different shells records the same entry, and `remove` finds it.
-    let project = std::fs::canonicalize(&dir).unwrap_or(dir);
     Ok((
         workspace.unwrap_or_else(|| DEFAULT_WORKSPACE.to_owned()),
         project,

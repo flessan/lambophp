@@ -314,7 +314,11 @@ mod tests {
         let temp = TempDir::new();
         let paths = temp.home();
         let project = legacy_project(temp.path(), "shop");
-        let legacy = legacy_home_in(&temp, "server:\n  http_port: 9090\n", &[project.clone()]);
+        let legacy = legacy_home_in(
+            &temp,
+            "server:\n  http_port: 9090\n",
+            std::slice::from_ref(&project),
+        );
 
         let report = detect_in(&paths, Some(legacy.clone()));
         assert_eq!(report.legacy_home.as_deref(), Some(legacy.as_path()));
@@ -337,7 +341,11 @@ mod tests {
         let temp = TempDir::new();
         let paths = temp.home();
         let shop = legacy_project(temp.path(), "shop");
-        let legacy = legacy_home_in(&temp, "server:\n  http_port: 9090\n", &[shop.clone()]);
+        let legacy = legacy_home_in(
+            &temp,
+            "server:\n  http_port: 9090\n",
+            std::slice::from_ref(&shop),
+        );
 
         let report = run_in(&paths, Some(legacy.clone())).unwrap();
 
@@ -376,7 +384,11 @@ mod tests {
         let temp = TempDir::new();
         let paths = temp.home();
         let shop = legacy_project(temp.path(), "shop");
-        let legacy = legacy_home_in(&temp, "server:\n  http_port: 9090\n", &[shop.clone()]);
+        let legacy = legacy_home_in(
+            &temp,
+            "server:\n  http_port: 9090\n",
+            std::slice::from_ref(&shop),
+        );
 
         let first = run_in(&paths, Some(legacy.clone())).unwrap();
         assert!(first.config_migrated);

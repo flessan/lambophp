@@ -93,7 +93,7 @@ no network access once the crates are vendored. See
 ## Verifying an install
 
 ```bash
-lambo --version     # prints lambo 0.9.0
+lambo --version     # prints the installed version, e.g. lambo 0.14.0-rc.1
 lambo doctor        # every check, each failure with the command that fixes it
 ```
 
@@ -104,13 +104,17 @@ install.
 ## Pinning checksums
 
 Lambo downloads PHP, Apache, MariaDB and phpMyAdmin - and refuses to extract or
-execute anything it cannot verify. The catalogue that ships in the binary has
-`sha256: null` for every entry, which means "look for an upstream
-`<url>.sha256` sidecar". Most of these upstreams do not publish one, so **on a
-fresh install every download fails closed** with a message naming the
+execute anything it cannot verify. The catalogue that ships in the binary
+carries a pinned SHA-256 for every entry whose publisher exposes a usable
+digest (PHP 8.4.2 on Windows, the Apache Lounge httpd build, both MariaDB
+Windows zips and the Linux x86_64 tarball, and phpMyAdmin on every platform).
+An entry whose `sha256` is `null` is verified against the upstream
+`<url>.sha256` sidecar at download time; where the publisher publishes neither
+(the static-php.dev PHP builds, Oracle MySQL, Adminer and the two older
+Windows PHP archives) the download fails closed with a message naming the
 catalogue directory.
 
-Pin the releases you want by writing a JSON file into
+Pin or correct the releases you want by writing a JSON file into
 `<home>/config/catalogs/` (`php.json`, `apache.json`, `mariadb.json`,
 `mysql.json`, `dbui.json`). Entries replace the built-in ones when `version`
 and `platform` match:
@@ -158,9 +162,10 @@ offers for the machine you are on.
   server.
 - **Linux Apache**: same - use your distribution's package, or
   `server.kind: php`.
-- **phpMyAdmin**: no checksum is pinned, so `lambo db install-ui` fails closed.
-  Pin one in `catalogs/dbui.json`, or install the manager so that
-  `<home>/dbui/index.php` exists.
+- **Adminer**: its GitHub release publishes no digest Lambo can consume, so
+  the Adminer variant of `lambo db install-ui` fails closed until a digest is
+  pinned in `catalogs/dbui.json`. phpMyAdmin - the default manager - is pinned
+  and installs out of the box.
 
 These are tracked in [roadmap.md](roadmap.md).
 

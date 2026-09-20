@@ -1,7 +1,9 @@
 //! Test utilities shared by the module unit tests.
 //!
-//! Only compiled under `cfg(test)`. Integration tests under `tests/` cannot
-//! use this module (it is crate-internal); they carry their own tiny copy.
+//! Compiled under `cfg(test)`, and for an interface crate's tests when the
+//! `testutil` feature is on - `lambo-gui`'s panel tests are what ask for it.
+//! Integration tests under `tests/` cannot use this module (they are separate
+//! crates and the feature is not on for them); they carry their own tiny copy.
 //!
 //! The archive writers below are the reason the runtime manager can be tested
 //! without downloading anything: they produce real `.zip` and `.tar.gz` files -
@@ -24,13 +26,20 @@ use crate::runtime::RuntimeKind;
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// A unique temporary directory that deletes itself on drop.
-pub(crate) struct TempDir {
+pub struct TempDir {
     path: PathBuf,
+}
+
+impl Default for TempDir {
+    /// A fresh temporary directory, the same as [`TempDir::new`].
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TempDir {
     /// Creates a new, empty temporary directory.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -45,17 +54,17 @@ impl TempDir {
     }
 
     /// Path of the temporary directory.
-    pub(crate) fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
     /// Joins a path onto the temporary directory.
-    pub(crate) fn join(&self, child: impl AsRef<Path>) -> PathBuf {
+    pub fn join(&self, child: impl AsRef<Path>) -> PathBuf {
         self.path.join(child)
     }
 
     /// A fresh Lambo home rooted inside this directory.
-    pub(crate) fn home(&self) -> Paths {
+    pub fn home(&self) -> Paths {
         let paths = Paths::from_root(self.path.join("lambo-home"));
         paths
             .ensure_layout()
@@ -71,7 +80,7 @@ impl Drop for TempDir {
 }
 
 /// Writes a file inside `dir`, creating parent directories.
-pub(crate) fn fixture(dir: &Path, relative: &str, contents: &str) {
+pub fn fixture(dir: &Path, relative: &str, contents: &str) {
     let path = dir.join(relative);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("failed to create fixture directory");
@@ -80,9 +89,19 @@ pub(crate) fn fixture(dir: &Path, relative: &str, contents: &str) {
 }
 
 /// Writes an executable file, with the executable bit set on Unix.
-pub(crate) fn fixture_executable(path: &Path) {
+///
+/// On Windows the file is a hard link (or a copy) of the `lambo-fixture-server`
+/// binary: a real executable, where the `MZ` stub the Unix branch would not
+/// need is refused by the loader the moment a test starts it. The fixture
+/// server answers PHP's probes (`-v`, `--ini`, `-m`) in PHP's own output
+/// shapes, so a fake PHP runtime installed from it starts and responds -
+/// which is all the plumbing tests ask of it.
+pub fn fixture_executable(path: &Path) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("failed to create fixture directory");
+    }
+    if cfg!(windows) && place_fixture_server(path) {
+        return;
     }
     let body = if cfg!(windows) {
         b"MZ\x90\x00".to_vec()
@@ -93,9 +112,48 @@ pub(crate) fn fixture_executable(path: &Path) {
     mark_executable(path);
 }
 
+/// Places the fixture server as the executable at `path`; `false` when the
+/// binary is not there and the caller must fall back to a written stub.
+fn place_fixture_server(path: &Path) -> bool {
+    if path.exists() {
+        // A runtime's executable lists can name the same file twice (a server
+        // that is also its own initialiser); the first placement already made
+        // it the fixture server, and writing over a link another test is
+        // currently executing would be refused by Windows.
+        return true;
+    }
+    let Some(server) = fixture_server_binary() else {
+        return false;
+    };
+    // A hard link is a second name for the same file; when the temporary
+    // directory is on another volume, a copy stands in for it.
+    if fs::hard_link(&server, path).is_err() {
+        fs::copy(&server, path).expect("failed to copy the fixture server into place");
+    }
+    true
+}
+
+/// The `lambo-fixture-server` binary this test run can reach, when there is one.
+///
+/// Integration tests receive the path from cargo; unit tests do not get
+/// `CARGO_BIN_EXE_*` variables, so they derive it: cargo puts the binary one
+/// directory above the `deps` directory the test executable runs from. A run
+/// that compiles every target (`cargo test --all-targets`) has built it.
+fn fixture_server_binary() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_lambo-fixture-server") {
+        return Some(PathBuf::from(path));
+    }
+    let exe = std::env::current_exe().ok()?;
+    let candidate = exe.parent()?.parent()?.join(format!(
+        "lambo-fixture-server{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    candidate.is_file().then_some(candidate)
+}
+
 /// Sets the executable bit on Unix; a no-op elsewhere.
 #[cfg(unix)]
-pub(crate) fn mark_executable(path: &Path) {
+pub fn mark_executable(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let mut permissions = fs::metadata(path)
         .expect("fixture must exist")
@@ -106,14 +164,14 @@ pub(crate) fn mark_executable(path: &Path) {
 
 /// Sets the executable bit on Unix; a no-op elsewhere.
 #[cfg(not(unix))]
-pub(crate) fn mark_executable(_path: &Path) {}
+pub fn mark_executable(_path: &Path) {}
 
 /// Installs a fake runtime of `kind` and `version` into a Lambo home.
 ///
 /// Produces the directory shape the real archives unpack to, including the
 /// family's primary executable, so discovery, activation and service start-up
 /// can all be tested on a machine with nothing installed.
-pub(crate) fn install_fake_runtime(paths: &Paths, kind: RuntimeKind, version: &str, os: Os) {
+pub fn install_fake_runtime(paths: &Paths, kind: RuntimeKind, version: &str, os: Os) {
     let root = paths.runtime_version_dir(kind, version);
     fs::create_dir_all(&root).expect("failed to create runtime directory");
     for name in kind.server_executables() {
@@ -145,7 +203,7 @@ pub(crate) fn install_fake_runtime(paths: &Paths, kind: RuntimeKind, version: &s
 ///
 /// `entries` holds `(name, content)` pairs; a `None` content with a trailing
 /// `/` in the name creates a directory entry.
-pub(crate) fn write_zip(path: &Path, entries: &[(&str, Option<&[u8]>)]) {
+pub fn write_zip(path: &Path, entries: &[(&str, Option<&[u8]>)]) {
     let mut body: Vec<u8> = Vec::new();
     let mut central: Vec<u8> = Vec::new();
     let mut count: u16 = 0;
@@ -213,7 +271,7 @@ pub(crate) fn write_zip(path: &Path, entries: &[(&str, Option<&[u8]>)]) {
 /// in the external attributes - exactly the shape an archive uses to try to
 /// escape the destination, so the extractor's refusal can be tested against a
 /// real entry rather than a hypothetical one.
-pub(crate) fn write_zip_symlink(path: &Path, name: &str, target: &str) {
+pub fn write_zip_symlink(path: &Path, name: &str, target: &str) {
     let data = target.as_bytes();
     let crc = crc32(data);
     let name_bytes = name.as_bytes();
@@ -277,7 +335,7 @@ pub(crate) fn write_zip_symlink(path: &Path, name: &str, target: &str) {
 /// type bit set (`0o120000`) emits a symlink entry whose content is the link
 /// target - the shape a malicious archive uses to escape the destination, so
 /// the extractor's refusal can be tested against a genuine entry.
-pub(crate) fn write_tar_gz(path: &Path, entries: &[(&str, Option<&[u8]>, u32)]) {
+pub fn write_tar_gz(path: &Path, entries: &[(&str, Option<&[u8]>, u32)]) {
     let mut tar: Vec<u8> = Vec::new();
 
     for (name, content, mode) in entries {

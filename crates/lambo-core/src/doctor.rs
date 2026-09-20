@@ -17,14 +17,16 @@ use crate::catalog::{self, Catalog, Family};
 use crate::config::{Config, DatabaseKind};
 use crate::dbui;
 use crate::download;
-use crate::logs;
+use crate::logs::{self, nop_log};
+use crate::panel::PanelConfig;
 use crate::paths::Paths;
 use crate::platform::{Os, Platform};
 use crate::port;
 use crate::project::Project;
 use crate::runtime::{InstalledRuntime, RuntimeKind};
+use crate::service::HostService;
 use crate::session;
-use crate::state::State;
+use crate::stack::Stack;
 
 /// How bad a finding is.
 ///
@@ -365,7 +367,10 @@ pub fn check_readiness(
                 "{verifiable} of {listed} artifacts listed for {key} can be verified; the rest \
                  will be refused"
             ),
-            "pin a digest for the remainder, or they cannot be installed",
+            format!(
+                "{} - an artifact without a digest cannot be installed",
+                crate::config::PIN_A_DIGEST
+            ),
         );
     }
     Check::ok(
@@ -406,6 +411,80 @@ pub fn check_release_catalog(catalog: &Catalog) -> Check {
         "calculate each artifact's SHA-256 and record it in `catalogs/default.json`; \
          see docs/release.md",
     )
+}
+
+/// Do the cached downloads still match the digests the catalogue pins?
+///
+/// A download is verified against its pinned digest as it lands, so a cache
+/// entry that no longer matches was changed afterwards - corrupted on disk or
+/// tampered with - and installing from it would put the wrong bytes in place.
+/// Entries that are not cached yet are fine: installing fetches them with
+/// verification. This is what `lambo verify` adds to the diagnosis.
+pub fn check_cached_artifacts(paths: &Paths, catalog: &Catalog) -> Check {
+    let cache = crate::download_cache::DownloadCache::new(
+        paths.root(),
+        nop_log(),
+        Box::new(download::SystemDownloader),
+    );
+    let dir = cache.dir().to_path_buf();
+
+    let mut checked = 0usize;
+    let mut mismatches: Vec<String> = Vec::new();
+    for family in [
+        Family::Php,
+        Family::Apache,
+        Family::Mariadb,
+        Family::Mysql,
+        Family::DbUi,
+    ] {
+        for release in catalog.releases(family) {
+            let Some(pinned) = &release.sha256 else {
+                continue;
+            };
+            let Some(file_name) = release
+                .url
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+            else {
+                continue;
+            };
+            let cached = dir.join(file_name);
+            if !cached.is_file() {
+                continue;
+            }
+            checked += 1;
+            match crate::sha256::sha256_file(&cached) {
+                Ok(digest) if digest.eq_ignore_ascii_case(pinned) => {}
+                Ok(digest) => mismatches.push(format!("{file_name} (now {digest})")),
+                Err(_) => mismatches.push(format!("{file_name} (unreadable)")),
+            }
+        }
+    }
+
+    if let Some(first) = mismatches.first() {
+        let detail = if mismatches.len() == 1 {
+            first.clone()
+        } else {
+            format!("{} files, the first being {first}", mismatches.len())
+        };
+        return Check::fail(
+            "artifacts",
+            format!("a cached download no longer matches its pinned SHA-256: {detail}"),
+            "delete the file from the downloads directory and install it again",
+        );
+    }
+    if checked == 0 {
+        Check::ok(
+            "artifacts",
+            "nothing cached yet; installs download with verification",
+        )
+    } else {
+        Check::ok(
+            "artifacts",
+            format!("{checked} cached download(s) match their pinned SHA-256"),
+        )
+    }
 }
 
 /// Does the download catalogue offer anything for this platform?
@@ -716,13 +795,7 @@ pub fn check_database_ui(paths: &Paths) -> Check {
 /// problem the user has to resolve, because Lambo never kills other
 /// applications' processes.
 pub fn check_ports(paths: &Paths, config: &Config, os: Os) -> Vec<Check> {
-    let state = State::load(paths).unwrap_or_default();
-    let ours: Vec<u16> = state
-        .ordered()
-        .into_iter()
-        .filter(|record| record.is_alive(os))
-        .filter_map(|record| record.port)
-        .collect();
+    let ours = running_ports(paths);
 
     let mut checks = Vec::new();
     for (number, key) in [
@@ -866,35 +939,61 @@ pub fn check_project_runtime(
     checks
 }
 
-/// Are the recorded services actually alive?
-pub fn check_services(paths: &Paths, os: Os) -> Check {
-    let state = match State::load(paths) {
-        Ok(state) => state,
+/// The stack the installation's own configuration describes.
+///
+/// A configuration that cannot be read is an error rather than an empty stack:
+/// "no services" and "no idea what the services are" are different findings, and
+/// a port list is not the place to report a broken file.
+fn stack_of(paths: &Paths) -> crate::Result<Stack> {
+    let config = PanelConfig::load(paths.root())?;
+    Ok(Stack::build(
+        paths.root(),
+        &config,
+        std::sync::Arc::new(HostService::new()),
+        nop_log(),
+    ))
+}
+
+/// The ports the installation's services are listening on.
+///
+/// The engines are asked, not a file: a port is "ours" exactly while the
+/// process holding it is the one Lambo started, so a service that died cannot
+/// leave its port looking accounted for.
+pub fn running_ports(paths: &Paths) -> Vec<u16> {
+    // A configuration nobody can read holds no ports, and the check that cares
+    // about it reports the reason itself.
+    let Ok(stack) = stack_of(paths) else {
+        return Vec::new();
+    };
+    stack
+        .services()
+        .iter()
+        .filter(|service| service.running())
+        .map(|service| service.conf().port)
+        .filter(|port| *port > 0)
+        .collect()
+}
+
+/// Are the configured services actually running?
+///
+/// "Configured but dead" is not a state an engine can be in, which is the point
+/// of asking them: what this reports is what the dashboard shows.
+pub fn check_services(paths: &Paths, _os: Os) -> Check {
+    let stack = match stack_of(paths) {
+        Ok(stack) => stack,
         Err(error) => return Check::fail("services", error.to_string(), "lambo down"),
     };
-    if state.is_empty() {
-        return Check::ok("services", "nothing is recorded as running");
-    }
 
-    let alive = state.alive(os);
-    let dead: Vec<&str> = state
-        .ordered()
-        .into_iter()
-        .filter(|record| !record.is_alive(os))
-        .map(|record| record.name.as_str())
+    let running: Vec<&str> = stack
+        .services()
+        .iter()
+        .filter(|service| service.running())
+        .map(|service| service.name())
         .collect();
-    if !dead.is_empty() {
-        return Check::warn(
-            "services",
-            format!(
-                "{} recorded but no longer running (see the logs)",
-                dead.join(", ")
-            ),
-            "lambo down",
-        );
+    if running.is_empty() {
+        return Check::ok("services", "nothing is running");
     }
-    let names: Vec<&str> = alive.iter().map(|record| record.name.as_str()).collect();
-    Check::ok("services", format!("running: {}", names.join(", ")))
+    Check::ok("services", format!("running: {}", running.join(", ")))
 }
 
 /// The log directory to point a user at.
@@ -916,7 +1015,6 @@ pub fn needs_database(kind: DatabaseKind) -> bool {
 mod tests {
     use super::*;
     use crate::runtime;
-    use crate::state::{ServiceRecord, names};
     use crate::testutil::{self, TempDir};
 
     fn setup() -> (TempDir, Paths, Config) {
@@ -1029,7 +1127,7 @@ mod tests {
     }
 
     #[test]
-    fn a_port_held_by_something_else_is_a_failure_and_by_lambo_is_fine() {
+    fn a_port_held_by_something_else_is_a_failure_and_a_free_one_is_not() {
         let (_temp, paths, mut config) = setup();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let taken = listener.local_addr().unwrap().port();
@@ -1049,48 +1147,45 @@ mod tests {
             "{server:?}"
         );
 
-        // The same port is fine when a live Lambo service owns it.
-        let mut state = State::default();
-        state.record(
-            ServiceRecord::new(names::APACHE, std::process::id(), "httpd").with_port(taken),
-        );
-        state.save(&paths).unwrap();
+        // A free port is not a finding. A port held by one of the
+        // installation's own services is fine too, but that needs a service
+        // that is really running - the engines' own tests cover the port check
+        // they perform, and `running_ports` is what feeds it here.
+        config.server.port = port::first_free(46_200..46_300).unwrap();
         let checks = check_ports(&paths, &config, Os::host());
         let server = checks
             .iter()
             .find(|check| check.detail.contains("server.port"))
             .unwrap();
         assert_eq!(server.severity, Severity::Ok, "{server:?}");
-        assert!(server.detail.contains("by Lambo"), "{server:?}");
+        assert!(server.detail.contains("is free"), "{server:?}");
         drop(listener);
     }
 
     #[test]
-    fn a_recorded_but_dead_service_is_reported_as_such() {
+    fn a_configuration_that_cannot_be_read_is_reported_with_a_way_forward() {
         let (_temp, paths, _config) = setup();
-        let mut state = State::default();
-        state.record(ServiceRecord::new(names::APACHE, u32::MAX, "httpd"));
-        state.save(&paths).unwrap();
+        std::fs::write(paths.root().join("config.json"), "{ not json").unwrap();
 
         let check = check_services(&paths, Os::host());
-        assert_eq!(check.severity, Severity::Warn, "{check:?}");
-        assert!(check.detail.contains("apache"), "{check:?}");
+        assert_eq!(check.severity, Severity::Fail, "{check:?}");
         assert_eq!(check.fix.as_deref(), Some("lambo down"));
     }
 
     #[test]
-    fn a_live_service_is_reported_as_running() {
+    fn nothing_running_is_not_a_finding() {
+        // A fresh home has the shipped configuration and no engines, which is
+        // the state `lambo doctor` is most often run in.
         let (_temp, paths, _config) = setup();
-        let mut state = State::default();
-        // This test process is certainly alive.
-        state.record(
-            ServiceRecord::new(names::DATABASE, std::process::id(), "mariadbd").with_port(3306),
-        );
-        state.save(&paths).unwrap();
-
         let check = check_services(&paths, Os::host());
         assert_eq!(check.severity, Severity::Ok, "{check:?}");
-        assert!(check.detail.contains("database"), "{check:?}");
+        assert!(check.detail.contains("nothing is running"), "{check:?}");
+    }
+
+    #[test]
+    fn no_service_holds_a_port_when_none_is_running() {
+        let (_temp, paths, _config) = setup();
+        assert!(running_ports(&paths).is_empty());
     }
 
     #[test]

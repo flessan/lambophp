@@ -20,9 +20,29 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::error::{Error, Result};
 use crate::paths::Paths;
+
+/// A sink for the lines a long-running operation reports as it goes.
+///
+/// The engine narrates what it is doing - `  using cached php.zip`, `  latest
+/// Apache: 2.4.68 (VS18, build 260827)` - and each front end decides where
+/// that goes: the GUI appends it to its log pane, the CLI prints it, a test
+/// records it. Passing a sink rather than reading the output of a child
+/// process is what lets the GUI show an install as it happens instead of
+/// guessing afterwards.
+pub type LogFn = Arc<dyn Fn(&str) + Send + Sync + 'static>;
+
+/// A log sink that discards everything.
+///
+/// The previous implementation passed `nil` for the same purpose; an explicit
+/// no-op is easier to read at a call site than an `Option` that every writer
+/// has to unwrap.
+pub fn nop_log() -> LogFn {
+    Arc::new(|_| {})
+}
 
 /// How much of the end of a file `tail` considers at most.
 const TAIL_WINDOW: u64 = 256 * 1024;

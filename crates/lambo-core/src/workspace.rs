@@ -92,16 +92,28 @@ impl Workspaces {
         fs::write(&path, format!("{HEADER}{body}")).map_err(|e| Error::io(&path, e))
     }
 
-    /// Adds `project` (absolute path) to `workspace`.
+    /// The key a project is stored under.
+    ///
+    /// A directory that exists is canonicalized, so `lambo workspace add .`
+    /// from two different shells records one entry and `remove` finds it
+    /// again; a path that cannot be resolved (a project that has not been
+    /// created yet) is kept exactly as it was given. The rule is here rather
+    /// than in an interface so every caller keys the registry the same way.
+    pub fn key(project: &Path) -> PathBuf {
+        std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf())
+    }
+
+    /// Adds `project` to `workspace`.
     ///
     /// Returns `false` when the project was already registered - adding is
     /// idempotent and never duplicates.
     pub fn add(&mut self, workspace: &str, project: &Path) -> bool {
+        let project = Self::key(project);
         let projects = self.map.entry(workspace.to_owned()).or_default();
-        if projects.iter().any(|p| p == project) {
+        if projects.contains(&project) {
             return false;
         }
-        projects.push(project.to_path_buf());
+        projects.push(project);
         projects.sort();
         true
     }
@@ -112,11 +124,12 @@ impl Workspaces {
     /// with [`Error::WorkspaceNotFound`] when the workspace itself is
     /// unknown. Empty workspaces are removed automatically.
     pub fn remove(&mut self, workspace: &str, project: &Path) -> Result<bool> {
+        let project = Self::key(project);
         let Some(projects) = self.map.get_mut(workspace) else {
             return Err(Error::WorkspaceNotFound(workspace.to_owned()));
         };
         let before = projects.len();
-        projects.retain(|p| p != project);
+        projects.retain(|p| p != &project);
         let removed = projects.len() != before;
         if projects.is_empty() {
             self.map.remove(workspace);
@@ -171,6 +184,33 @@ mod tests {
             ]
         );
         assert_eq!(reg.project_count(), 2);
+    }
+
+    #[test]
+    fn the_registry_key_is_the_canonical_path_of_an_existing_directory() {
+        let temp = TempDir::new();
+        std::fs::create_dir_all(temp.path().join("www").join("shop")).expect("fixture");
+        let absolute = temp.path().join("www").join("shop");
+
+        // The same directory reached two ways is one entry: that is what makes
+        // `lambo workspace add .` and a later `remove .` agree.
+        let mut reg = Workspaces::default();
+        assert!(reg.add("personal", &absolute));
+        let indirect = absolute.join(".").join("");
+        assert!(
+            !reg.add("personal", &indirect),
+            "a second spelling of the same directory must not duplicate it"
+        );
+        assert_eq!(reg.projects("personal").unwrap().len(), 1);
+        assert!(reg.remove("personal", &indirect).unwrap());
+        assert!(reg.is_empty());
+
+        // A path that does not exist yet is kept verbatim rather than being
+        // dropped: the project may be created a moment later.
+        let missing = temp.path().join("not-yet");
+        assert_eq!(Workspaces::key(&missing), missing);
+        assert!(reg.add("personal", &missing));
+        assert_eq!(reg.projects("personal").unwrap(), [missing]);
     }
 
     #[test]

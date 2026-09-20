@@ -12,16 +12,15 @@ use crate::error::Result;
 use crate::ui::Ui;
 
 pub fn run(ui: &Ui, database: bool) -> Result<ExitCode> {
-    let mut context = super::context()?;
-
     if database {
-        let project = super::project_or_none()?;
-        let name = project.as_ref().map(|project| project.database_name());
-        let url = session::open_database_ui(&mut context, name.as_deref(), true)?;
-        ui.ok(format!("opened {url}"));
-        return Ok(ExitCode::SUCCESS);
+        // One path, not two: `lambo open --db` and `lambo db open` are the
+        // same request, so the second spelling is handed to the first rather
+        // than reimplemented here. Anything else drifts - and had drifted:
+        // this branch used to skip the layout check the other one makes.
+        return crate::commands::db::run(ui, crate::commands::db::DbCommand::Open);
     }
 
+    let context = super::context()?;
     let project = super::project()?;
     // From the port the server actually bound, not the configured one: after
     // a port fallback the two differ, and opening the configured URL would

@@ -11,10 +11,19 @@
 //!    directory, which is the platform's own answer to the same problem.
 
 use std::fs;
+use std::fs::{File, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{Error, Result};
+
+/// How many names [`create_temp`] tries before giving up.
+///
+/// A collision means another process created the exact same name in the same
+/// microsecond; one retry would be enough in practice, and sixteen is enough
+/// that the failure can only mean the directory is not writable.
+const TEMP_ATTEMPTS: usize = 16;
 
 /// Writes `contents` to `path` atomically, creating parent directories.
 ///
@@ -97,6 +106,87 @@ pub fn remove_dir_all_if_exists(path: &Path) -> Result<bool> {
         Err(source) if source.kind() == ErrorKind::NotFound => Ok(false),
         Err(source) => Err(Error::io(path, source)),
     }
+}
+
+/// Creates a uniquely named temporary file in `dir`.
+///
+/// The name starts with `prefix` and ends in `.tmp`, so these files are
+/// recognisable as Lambo's own scratch space rather than as documents. The
+/// returned file is open and empty; removing it is the caller's job, because
+/// the callers that matter rename it into place instead (that is what makes a
+/// configuration write atomic), and a guard that must not run its cleanup is
+/// not a guard.
+pub fn create_temp(dir: &Path, prefix: &str) -> Result<(PathBuf, File)> {
+    ensure_dir(dir)?;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or(0);
+
+    for attempt in 0..TEMP_ATTEMPTS {
+        let name = format!("{prefix}{}-{nanos}-{attempt}.tmp", std::process::id());
+        let path = dir.join(name);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(source) if source.kind() == ErrorKind::AlreadyExists => continue,
+            Err(source) => return Err(Error::io(&path, source)),
+        }
+    }
+
+    Err(Error::io(
+        dir,
+        std::io::Error::other("could not create a unique temporary file"),
+    ))
+}
+
+/// Copies a file, creating the destination's parent directory.
+///
+/// A truncating copy, which is what an installer needs: the destination is a
+/// file the previous attempt may have left behind, and leaving a stale suffix
+/// of it in place would corrupt a smaller replacement.
+pub fn copy_file(from: &Path, to: &Path) -> Result<()> {
+    if let Some(parent) = to.parent() {
+        ensure_dir(parent)?;
+    }
+    let bytes = fs::read(from).map_err(|source| Error::io(from, source))?;
+    fs::write(to, bytes).map_err(|source| Error::io(to, source))
+}
+
+/// Copies a file only when the destination differs in size or timestamp.
+///
+/// The check is the one the previous implementation used, and it is what makes
+/// the self-heal paths cheap: mirroring three runtime DLLs into every PHP
+/// installation on every launch would otherwise rewrite hundreds of megabytes.
+///
+/// The destination's timestamp is set from the source's afterwards, so a
+/// second run recognises its own work and skips it.
+pub fn copy_file_if_changed(from: &Path, to: &Path) -> Result<bool> {
+    let source = fs::metadata(from).map_err(|error| Error::io(from, error))?;
+    if let Ok(existing) = fs::metadata(to) {
+        let same_size = existing.len() == source.len();
+        let same_time = match (existing.modified(), source.modified()) {
+            (Ok(left), Ok(right)) => left == right,
+            _ => false,
+        };
+        if same_size && same_time {
+            return Ok(false);
+        }
+    }
+
+    if let Some(parent) = to.parent() {
+        ensure_dir(parent)?;
+    }
+    let bytes = fs::read(from).map_err(|error| Error::io(from, error))?;
+    fs::write(to, bytes).map_err(|error| Error::io(to, error))?;
+
+    // Best effort, and deliberately not an error: a filesystem that cannot
+    // store the timestamp simply means the next run copies the file again.
+    if let Ok(modified) = source.modified() {
+        if let Ok(file) = File::options().write(true).open(to) {
+            let _ = file.set_modified(modified);
+        }
+    }
+    Ok(true)
 }
 
 /// Reads a UTF-8 text file, mapping "missing" to `None`.

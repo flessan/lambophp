@@ -1,6 +1,8 @@
 # ADR-0002: Monorepo Cargo workspace with layered crates
 
-- **Status:** Accepted
+- **Status:** Accepted (the crate list in the Decision below is historical: the
+  TUI was never built, and the shipped workspace is `lambo-core`, `lambo-cli`,
+  `lambo-gui` and `lambo-process-windows`)
 - **Date:** 2026-07-30
 
 ## Context
@@ -14,6 +16,12 @@ Cargo workspace in one repo.
 **A Cargo workspace in a single repository.** Crates under `crates/`:
 `lambo-core`, `lambo-cli`, later `lambo-tui` and the GUI. Internal crates are
 `publish = false`; versioning is unified at the workspace level for now.
+
+*(As built: `lambo-core` for every rule, `lambo-cli` and `lambo-gui` as the two
+thin interfaces over it, and `lambo-process-windows` for the Win32 process
+layer. The TUI in this list was an early plan that this port does not need -
+the product being replaced has a graphical window, and the window is what was
+built.)*
 
 ## Rationale
 

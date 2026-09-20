@@ -104,7 +104,8 @@ jobs:
         run: >
           cargo test --workspace --locked --
           platform:: process:: port:: paths:: runtime:: fsx:: archive::
-          state:: apache:: database::
+          state:: ui_state:: console:: stack:: tray:: pathenv::
+          apache:: database::
 
       - name: service lifecycle
         run: cargo test --workspace --locked "session::"
@@ -115,3 +116,18 @@ jobs:
           .\target\release\lambo.exe --version
           .\target\release\lambo.exe --help
           .\target\release\lambo.exe doctor
+
+      # Every push also produces the native application as an artefact, so a
+      # build that is not tagged is still something you can download and run.
+      - name: package the native application
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory lambo-php-windows-x64 | Out-Null
+          Copy-Item target\release\lambo.exe, target\release\lambo-gui.exe lambo-php-windows-x64\
+          Compress-Archive lambo-php-windows-x64 lambo-php-windows-x64.zip
+
+      - name: upload the native application
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambo-php-windows-x64
+          path: lambo-php-windows-x64.zip

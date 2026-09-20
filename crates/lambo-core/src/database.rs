@@ -42,9 +42,8 @@ use crate::fsx;
 use crate::naming;
 use crate::paths::{self, Paths};
 use crate::platform::Os;
-use crate::process::{self, Output, ProcessSpec, StopOutcome};
+use crate::process::{self, Output, ProcessSpec};
 use crate::runtime::{self, InstalledRuntime, RuntimeKind};
-use crate::state::{ServiceRecord, names};
 use crate::version::VersionSpec;
 
 /// How long a database server gets to initialize and start.
@@ -622,62 +621,6 @@ pub fn shell_spec(database: &Database, plan: &Plan, name: Option<&str>) -> Optio
     Some(spec)
 }
 
-/// Starts the server with the generated configuration.
-pub fn start(database: &Database, plan: &Plan, os: Os) -> Result<ServiceRecord> {
-    let config_file = write_config(database, plan, os)?;
-    if let Some(parent) = plan.log.parent() {
-        fsx::ensure_dir(parent)?;
-    }
-
-    let spec = ProcessSpec::new(&database.server, "database")
-        .arg(format!("--defaults-file={}", config_file.display()))
-        .cwd(&database.runtime.path)
-        .log_to(&plan.log)
-        .detached();
-
-    let child = process::spawn(&spec, os)?;
-    let pid = child.id();
-    drop(child);
-
-    let identity = process::identity_settled(
-        pid,
-        os,
-        &spec.program,
-        std::time::Duration::from_millis(500),
-    );
-    let mut record = ServiceRecord::new(names::DATABASE, pid, spec.render())
-        .with_port(plan.port)
-        .with_log(plan.log.clone());
-    if let Some(identity) = &identity {
-        record = record.with_identity(identity);
-    }
-    Ok(record)
-}
-
-/// Stops the server, gracefully when the admin client is available.
-pub fn stop(
-    database: &Database,
-    plan: &Plan,
-    record: &ServiceRecord,
-    os: Os,
-) -> Result<StopOutcome> {
-    let graceful = database.admin.as_ref().map(|admin| {
-        ProcessSpec::new(admin, "database")
-            .arg("--host=127.0.0.1")
-            .arg(format!("--port={}", plan.port))
-            .arg(format!("--user={}", plan.username))
-            .arg("shutdown")
-            .env("MYSQL_PWD", &plan.password)
-    });
-    process::stop_verified(
-        record.pid,
-        record.identity().as_ref(),
-        os,
-        graceful.as_ref(),
-        SHUTDOWN_TIMEOUT,
-    )
-}
-
 /// Waits until the server accepts TCP connections.
 ///
 /// A TCP connect is the check rather than `mysqladmin ping` because it is the
@@ -772,7 +715,6 @@ fn describe_exit(code: Option<i32>) -> String {
 mod tests {
     use super::*;
     use crate::download::LocalDownloader;
-    use crate::state::State;
     use crate::testutil::{self, TempDir};
 
     fn config(port: u16) -> DatabaseConfig {
@@ -919,10 +861,12 @@ mod tests {
     }
 
     #[test]
-    fn stopping_and_restarting_preserves_the_database_files() {
-        // The property behind `lambo down` and `lambo restart`: stopping a
-        // service must not touch the data it holds. A local database that loses
-        // its rows on restart is worse than no database at all.
+    fn the_generated_configuration_never_touches_the_data_directory() {
+        // The server the engine starts is the one that decides what happens to
+        // its data; the only thing Lambo writes is the configuration it reads
+        // at start-up. A regeneration must therefore leave every file in the
+        // data directory exactly as it was - the previous implementation
+        // asserted this around its own stop, which the engine now owns.
         let temp = TempDir::new();
         let paths = temp.home();
         let os = Os::host();
@@ -938,13 +882,8 @@ mod tests {
         let marker = plan.data_dir.join("shop").join("users.ibd");
         let before = std::fs::read(&marker).unwrap();
 
-        // A stop is a state change, not a filesystem change: there is no server
-        // process here to signal, and the data directory is never an argument
-        // to anything stop() does.
-        let record = ServiceRecord::new(names::DATABASE, u32::MAX, "mariadbd --defaults-file=…")
-            .with_port(3306);
-        let outcome = stop(&database, &plan, &record, os).unwrap();
-        assert!(outcome.stopped(), "{outcome:?}");
+        let written = write_config(&database, &plan, os).unwrap();
+        assert!(written.exists(), "the configuration must be written");
 
         assert!(
             is_initialized(&plan),
@@ -959,46 +898,6 @@ mod tests {
             plan.data_dir.join("mysql").is_dir(),
             "the system schema must not have been recreated or removed"
         );
-
-        // A second start reads the same plan and the same data directory.
-        assert!(is_initialized(&plan), "restart must not reinitialize");
-    }
-
-    #[test]
-    fn a_service_record_survives_a_state_round_trip_so_restart_finds_it() {
-        // `lambo restart` and `lambo down` act on what the state file says. If
-        // the record did not survive, a restart would leave the server running
-        // and start a second one on the same port.
-        let temp = TempDir::new();
-        let paths = temp.home();
-        let os = Os::host();
-
-        let mut state = State::default();
-        state.record(
-            ServiceRecord::new(
-                names::DATABASE,
-                std::process::id(),
-                "mariadbd --defaults-file=…",
-            )
-            .with_port(3306)
-            .with_log(paths.logs_dir().join("database").join("server.log")),
-        );
-        state.save(&paths).unwrap();
-
-        let loaded = State::load(&paths).unwrap();
-        let record = loaded
-            .get(names::DATABASE)
-            .expect("the record must survive");
-        assert_eq!(record.port, Some(3306));
-        assert!(
-            record.is_alive(os),
-            "a live PID with no identity still reports liveness"
-        );
-
-        // And pruning must not drop it while it is alive.
-        let mut pruned = loaded;
-        assert!(!pruned.prune_dead(os), "nothing dead to prune");
-        assert!(pruned.get(names::DATABASE).is_some());
     }
 
     #[test]

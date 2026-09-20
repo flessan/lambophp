@@ -6,7 +6,150 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-_Nothing yet._
+**The panel.** This is the release in which Lambo became a complete replacement
+for the application it was ported from, not just a project-scoped CLI: the
+thirty-service dashboard, the version pickers, the virtual-host and project
+pages, the tray icon, the console buttons and the installation state file are
+all in the engine now, and the CLI and the window are two views over it. The
+whole rewrite was audited symbol by symbol against the application it was
+ported from, and that audit closed with nothing left unmapped.
+
+Not released yet, and deliberately so: the version stays `0.14.0-rc.1` until the
+manual Windows checklist in [docs/windows.md](docs/windows.md) has been run on a
+physical machine (no claim here is a substitute for that), at which point
+[docs/release.md](docs/release.md) step 4 is where the version and this section
+move on.
+
+### Added
+
+- **A landing page for the panel.** The window now opens on a landing page
+  with three ways in: start the stack and open the welcome page it serves on
+  localhost, open that page directly, or go to the dashboard. The five
+  workroom pages keep their sidebar; the landing page is the entrance, not a
+  sixth workroom.
+- **Loading a project from a folder it already lives in.** The projects page
+  carries a location field with **Browse…** - the Windows folder picker - and
+  **Open Project**, which probes the folder the way `lambo init` does
+  (framework, document root, database need, PHP constraint), registers the
+  project with a domain of its own, publishes the virtual host and reports
+  what it found. Nothing is scaffolded into a project that already exists.
+- **`lambo verify`.** The diagnostic suite plus two gates a plain diagnosis
+  leaves out: the catalogue must be releasable, and every cached download
+  must still match the SHA-256 the catalogue pins for it. The exit code makes
+  it usable as a pipeline gate.
+- **Release automation.** Pushing a `v*` tag builds the native application
+  (the `lambo` CLI and the `lambo-gui` panel) on Windows and publishes it as
+  a GitHub release with a SHA-256 checksum; every CI push also uploads the
+  built native application as an artefact.
+- **The dashboard, in the engine.** `lambo_core::panel` reads and writes the
+  installation state (`config.json`), and `lambo_core::ui_state` turns it into
+  pages, controls, layouts and status lines. Both interfaces consume that one
+  description: the window renders it, the CLI reads the same state.
+- **The service catalogue as data.** Thirty services with their versions,
+  download recipes, post-install hooks, icons and per-service rules - PHP,
+  Apache, Nginx, MariaDB, MySQL, PostgreSQL, Redis, phpMyAdmin, Adminer, MinIO,
+  Mailpit, RabbitMQ, pgweb and the language runtimes - with the version menus
+  the cards offer.
+- **Editable service configuration.** The panel's editor opens `httpd.conf`,
+  `php.ini`, `my.cnf`, `nginx.conf`, the state file and the generated vhost
+  includes, saves them atomically and re-validates what it wrote.
+- **Virtual hosts and projects from the window.** Add, edit, delete and apply a
+  host; scaffold a framework; open a project, its folder or its site - all
+  through the same engine calls the CLI uses.
+- **`lambo migrate`** (unchanged) plus a documented upgrade path from the
+  previous implementation: its `config.json` loads here unchanged, its managed
+  hosts and Apache blocks are replaced rather than duplicated, and a valid
+  archive in its download cache is adopted instead of being fetched again.
+- **A repository button** on the Settings page, opening the address compiled
+  into the build (the previous implementation's donation button was tied to its
+  author and is not ours to keep).
+
+### Changed
+
+- **One engine, two interfaces.** `lambo-core` owns every rule; `lambo-cli` and
+  `lambo-gui` parse, render and delegate. The window no longer contains any
+  behaviour of its own, and the CLI no longer contains any either: the two
+  spellings of "open the database manager" are the same function now.
+- **Branding.** No user-facing string names the previous product. On-disk
+  tokens are Lambo PHP's (hosts and Apache markers, the nginx site prefix, the
+  download-cache sidecar, the temporary-file prefix, the autostart value), and
+  the previous implementation's are recognised and stripped on read.
+- **De-branded repository.** Comments, documentation, the local-check scripts
+  and the test fixtures no longer name the previous product; the fixture it is
+  tested against is `legacy-default-config.json`.
+  What deliberately stays are the `LEGACY_*` on-disk tokens themselves, as
+  data: they are the upgrade path, and they must match byte for byte to work.
+
+### Fixed
+
+- **The engine's own test suite now runs on Windows.** Ten unit tests were
+  written but never watched on a real Windows machine: the fake runtimes they
+  install were four-byte stubs the loader refuses (they are now hard links of
+  the `lambo-fixture-server` binary, which answers PHP's probes), one test
+  fought the catalogue's pinned phpMyAdmin digest, five compared paths against
+  the wrong separator for the platform, and one assumed a machine with no
+  hosts file. The product behaviour was right in eight of the ten; the tests
+  were not.
+- **A started service kept its starter's pipes open on Windows.** The engine
+  streams a supervised service's output through pipes, but started the service
+  with an unrestricted `CreateProcess`, which handed it copies of every
+  inheritable handle the interface owned - including the pipes a capturing
+  caller reads. The service outlives the interface, so a caller waiting for
+  end-of-file (every test harness, and any tool driving the CLI) waited until
+  the service stopped. Supervised services now start through the same
+  handle-allowlisted launcher as detached ones and receive nothing but their
+  own streams; a second three-process regression covers the shape.
+- **The CLI could never install Apache on Windows.** The shipped download
+  catalogue pointed Apache at apache.org directories that no longer carry
+  Windows binaries - the HTTP Server project distributes source only. The dead
+  entries are replaced by one pinned Apache Lounge build (the same source the
+  panel's resolver uses) with the SHA-256 Apache Lounge publishes for it.
+- **The catalogue's checksums, pinned where a publisher exposes one.**
+  phpMyAdmin (its sidecar was disabled, so `lambo db install-ui` failed closed
+  out of the box), MariaDB 10.11.10 on Windows and 11.4.4 on Linux x86_64,
+  each from the upstream's own signed checksum documents. A MariaDB
+  `linux-arm64` entry pointing at an archive upstream never published is
+  removed. Entries no publisher digest exists for (the static-php builds,
+  Oracle MySQL, Adminer, the older Windows PHP archives) stay fail-closed and
+  are documented as such in the catalogue itself.
+- **The `windows-behaviour` CI job ran 83 of its tests never.** Its test
+  filter missed the `ui_state::`, `console::`, `stack::`, `tray::` and
+  `pathenv::` modules; the corrected filter is in the workflow and verified by
+  `scripts/local-check/check-ci-filter.py`.
+- **A configuration written by the previous implementation failed to load.**
+  Go writes `"projects": null` for an empty list, which `#[serde(default)]` does
+  not accept - only a missing key. Opening such a file reported it as invalid
+  JSON and the panel refused to start; the empty list is now read as what it
+  means. A regression test loads the previous implementation's first-launch
+  configuration byte for byte and asserts it is, field for field, the
+  configuration Lambo starts from.
+- The Windows installer writes the Add/Remove Programs entry its own comment
+  promised, so the product can be uninstalled from Apps & features instead of
+  only by running the uninstaller directly.
+- An empty list key in a hand-edited `lambo.yml` (`extensions:` with nothing
+  after it) is an empty list rather than a parse error.
+- `lambo open --db` skipped the layout check `lambo db open` performs; it is a
+  delegation now, so the two spellings cannot drift apart again.
+- `lambo workspace add` keyed a directory by the spelling it was given, so the
+  same directory reached two ways became two entries. Canonicalisation is the
+  engine's rule now, not the CLI's.
+
+### Verified
+
+908 tests pass (`cargo test --workspace --all-targets --locked
+--no-fail-fast`), 477 more through the local rustc harness, `cargo clippy
+--all-targets -D warnings` clean on the host and for `x86_64-pc-windows-msvc`,
+`cargo check` clean for that target, `scripts/local-check/check-format.sh`
+clean, and the symbol-by-symbol audit of the previous implementation closed
+with zero unmapped symbols and zero rows pointing at a name that does not
+exist.
+
+NOT VERIFIED: the window has never been run, no installer has been built
+(`makensis` is absent from the environment this was written in), and no real
+PHP or database has been downloaded and executed. CI's verdict is not readable
+from that environment either; the one-line change `ci.yml` needs is recorded in
+§14.7 rather than applied, because the push is refused for lack of the App's
+`workflows` permission.
 
 ## [0.14.0-rc.1] - release candidate
 

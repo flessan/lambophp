@@ -91,8 +91,8 @@ fn a_lambo_home_with_a_space_in_it_keeps_every_subdirectory_intact() {
         "C:/Program Files/Lambo/config/lambo.yml"
     );
     assert_eq!(
-        configured(&paths.state_file()),
-        "C:/Program Files/Lambo/data/services.yml"
+        configured(&paths.workspaces_file()),
+        "C:/Program Files/Lambo/config/workspaces.yml"
     );
     assert_eq!(
         configured(&paths.runtime_version_dir(RuntimeKind::Php, "8.4.2")),
@@ -144,7 +144,13 @@ fn spaced_apache() -> Apache {
 
 #[test]
 fn a_project_directory_with_spaces_survives_into_the_apache_configuration() {
-    let paths = Paths::from_root(r"C:\Program Files\Lambo");
+    // The plan's paths stay Windows-shaped on every platform, but the file
+    // itself must be written somewhere writable: a real `C:\Program Files`
+    // requires elevation on a real Windows machine. So the Lambo home under
+    // test lives in a temporary directory - with a space in it, so the
+    // paths-derived directives also prove that spaces survive.
+    let temp = TempDir::new();
+    let paths = Paths::from_root(temp.join("Program Files/Lambo"));
     let document_root = PathBuf::from(r"C:\Projects\my project");
 
     let plan = Plan {
@@ -194,7 +200,17 @@ fn a_project_directory_with_spaces_survives_into_the_apache_configuration() {
         );
     }
 
-    std::fs::remove_file(&written).ok();
+    // The paths-derived directives carry the Lambo home, which has a space in
+    // it here; they must arrive quoted and intact too.
+    let pid_file = configured(&paths.apache_run_dir().join("httpd.pid"));
+    assert!(
+        pid_file.contains(' '),
+        "the test is only meaningful with a space in the Lambo home: {pid_file}"
+    );
+    assert!(
+        config.contains(&format!("\"{pid_file}\"")),
+        "PidFile lost its quoting or its spaces: {config}"
+    );
 }
 
 // ---------------------------------------------------------------------------

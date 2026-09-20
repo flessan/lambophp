@@ -13,8 +13,10 @@ use clap::{Parser, Subcommand};
 use crate::commands;
 use crate::commands::config::ConfigCommand;
 use crate::commands::db::DbCommand;
+use crate::commands::frameworks::FrameworksCommand;
 use crate::commands::php::PhpCommand;
 use crate::commands::server::ServerCommand;
+use crate::commands::vhosts::VhostsCommand;
 use crate::commands::workspace::WorkspaceCommand;
 use crate::error::Result;
 
@@ -109,6 +111,14 @@ enum Command {
         release: bool,
     },
 
+    /// Verify the installation: the full diagnosis plus artifact integrity.
+    ///
+    /// Everything `doctor` checks, and two gates a plain diagnosis leaves out:
+    /// the catalogue must be releasable, and every cached download must still
+    /// match the SHA-256 the catalogue pins for it. The exit code is the
+    /// report's, which is what makes the command usable as a pipeline gate.
+    Verify,
+
     /// Show the logs of a Lambo service.
     Logs {
         /// Which log: `apache`, `database`, `php` or `lambo`.
@@ -153,6 +163,18 @@ enum Command {
     /// Manage workspaces: named groups of projects.
     #[command(subcommand)]
     Workspace(WorkspaceCommand),
+
+    /// List or scaffold a framework (Laravel, WordPress, Next.js, ...).
+    Frameworks {
+        #[command(subcommand)]
+        command: Option<FrameworksCommand>,
+    },
+
+    /// Manage virtual hosts: domains, document roots, ports, servers.
+    Vhosts {
+        #[command(subcommand)]
+        command: Option<VhostsCommand>,
+    },
 }
 
 /// Parses arguments, dispatches the command, returns the exit code.
@@ -175,6 +197,7 @@ pub fn run() -> Result<ExitCode> {
         Some(Command::Restart { no_browser }) => commands::restart::run(&ui, !no_browser),
         Some(Command::Open { db }) => commands::open::run(&ui, db),
         Some(Command::Doctor { release }) => commands::doctor::run(&ui, release),
+        Some(Command::Verify) => commands::verify::run(&ui),
         Some(Command::Logs {
             group,
             follow,
@@ -187,6 +210,8 @@ pub fn run() -> Result<ExitCode> {
         Some(Command::Db(command)) => commands::db::run(&ui, command),
         Some(Command::Config(command)) => commands::config::run(&ui, command),
         Some(Command::Workspace(command)) => commands::workspace::run(&ui, command),
+        Some(Command::Frameworks { command }) => commands::frameworks::run(&ui, command),
+        Some(Command::Vhosts { command }) => commands::vhosts::run(&ui, command),
     }
 }
 

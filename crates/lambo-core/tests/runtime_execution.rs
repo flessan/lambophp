@@ -308,6 +308,7 @@ fn orchestrating_a_project_refuses_a_runtime_that_will_not_run() {
         platform: Platform::new(Os::host(), Arch::X86_64),
         downloader: &LocalDownloader,
         os: Os::host(),
+        log: lambo_core::logs::nop_log(),
     };
     let mut healthy = context;
     session::ensure_php(&project, &mut healthy).expect("a working runtime must be accepted");
@@ -323,6 +324,7 @@ fn orchestrating_a_project_refuses_a_runtime_that_will_not_run() {
         platform: Platform::new(Os::host(), Arch::X86_64),
         downloader: &LocalDownloader,
         os: Os::host(),
+        log: lambo_core::logs::nop_log(),
     };
     let error = session::ensure_php(&project, &mut broken)
         .expect_err("`lambo up` must not proceed on a runtime that cannot run");

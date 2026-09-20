@@ -21,8 +21,15 @@
 //! session, a container. That is not an error worth failing a `lambo up` over,
 //! so [`open`] returns the outcome and callers report the URL for the user to
 //! open by hand.
+//!
+//! [`open_folder`] is the same rule for directories: the original's `openFolder`,
+//! used by the projects page's "Open folder" button, with the shell from its
+//! `openPath` sibling left behind.
+
+use std::path::Path;
 
 use crate::error::{Error, Result};
+use crate::fsx;
 use crate::platform::Os;
 use crate::process::{self, Output, ProcessSpec};
 
@@ -140,9 +147,100 @@ pub fn open(url: &str, os: Os) -> Result<()> {
     }
 }
 
+/// The command that opens a folder, with its fallback.
+///
+/// The same rule as [`opener`]: a plain process start with the path as a single
+/// argument, never a shell. The original's `openFolder` asked `explorer.exe`
+/// for a directory, which is already shell-free; its `openPath` went through
+/// `cmd /c start` - that is the one line of this area Lambo does not carry over,
+/// because a path containing `&` or `^` would be a command line, not a path.
+/// URLs from this port go through [`open`], which uses the same
+/// argument-vector mechanism.
+pub fn folder_opener(os: Os, path: &Path) -> (ProcessSpec, Option<ProcessSpec>) {
+    let target = path.display().to_string();
+    match os {
+        // The file manager is the target's own handler; `explorer.exe` takes the
+        // directory as one argument, and needs no command interpreter.
+        Os::Windows => (
+            ProcessSpec::new("explorer.exe", "folder")
+                .arg(&target)
+                .stdout(Output::Null)
+                .stderr(Output::Null),
+            None,
+        ),
+        Os::MacOs => (
+            ProcessSpec::new("open", "folder")
+                .arg(&target)
+                .stdout(Output::Null)
+                .stderr(Output::Null),
+            None,
+        ),
+        _ => (
+            ProcessSpec::new("xdg-open", "folder")
+                .arg(&target)
+                .stdout(Output::Null)
+                .stderr(Output::Null),
+            Some(
+                ProcessSpec::new("wslview", "folder")
+                    .arg(&target)
+                    .stdout(Output::Null)
+                    .stderr(Output::Null),
+            ),
+        ),
+    }
+}
+
+/// Opens a folder in the system's file manager, creating it if it is missing.
+///
+/// The original's `openFolder`: the projects page's "Open folder" button points at
+/// `www/<project>`, which may not exist yet, so the directory is created first -
+/// best effort, exactly as the original, whose `MkdirAll` result was discarded.
+/// If it cannot be created the file manager fails to open it, which is reported
+/// here instead of being swallowed.
+///
+/// The child is left running: the file manager is the user's process, not
+/// Lambo's.
+pub fn open_folder(path: &Path, os: Os) -> Result<()> {
+    if !path.exists() {
+        let _ = fsx::ensure_dir(path);
+    }
+
+    let (primary, fallback) = folder_opener(os, path);
+    if process::spawn(&primary, os).is_ok() {
+        return Ok(());
+    }
+
+    let folder = path.display();
+    match fallback {
+        Some(fallback) if process::spawn(&fallback, os).is_ok() => Ok(()),
+        Some(fallback) => Err(Error::ServiceFailed {
+            service: "the file manager".to_owned(),
+            reason: format!(
+                "no way to open a folder was found on this machine; open {folder} manually"
+            ),
+            causes: vec![
+                format!("{} could not be started", primary.program.display()),
+                format!("{} could not be started", fallback.program.display()),
+                "there may be no graphical session (SSH, container, CI)".to_owned(),
+            ],
+            hint: Some(format!("open {folder} manually")),
+        }),
+        None => Err(Error::ServiceFailed {
+            service: "the file manager".to_owned(),
+            reason: format!(
+                "{} could not be started; open {folder} manually",
+                primary.program.display()
+            ),
+            causes: vec!["there may be no graphical session (SSH, container, CI)".to_owned()],
+            hint: Some(format!("open {folder} manually")),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testutil::TempDir;
 
     #[test]
     fn only_plain_http_urls_are_opened() {
@@ -169,6 +267,58 @@ mod tests {
             "http://localhost:8080/$HOME",
         ] {
             assert!(!is_safe_url(bad), "`{bad}` must be refused");
+        }
+    }
+
+    #[test]
+    fn a_folder_opens_without_a_command_interpreter() {
+        let folder = Path::new("C:/Lambo/www/shop & co");
+        let (primary, _) = folder_opener(Os::Windows, folder);
+
+        assert_eq!(primary.program.display().to_string(), "explorer.exe");
+        // One argument, whole: a `&` in a directory name is a name, not a
+        // command separator, because no interpreter ever sees it.
+        assert_eq!(primary.args, ["C:/Lambo/www/shop & co"]);
+        assert!(
+            !primary.program.display().to_string().contains("cmd"),
+            "the shell must stay out of it"
+        );
+
+        assert_eq!(
+            folder_opener(Os::MacOs, Path::new("/tmp/x"))
+                .0
+                .program
+                .display()
+                .to_string(),
+            "open"
+        );
+        let (linux, fallback) = folder_opener(Os::Linux, Path::new("/tmp/x"));
+        assert_eq!(linux.program.display().to_string(), "xdg-open");
+        assert_eq!(
+            fallback
+                .expect("wsl has its own opener")
+                .program
+                .display()
+                .to_string(),
+            "wslview"
+        );
+    }
+
+    #[test]
+    fn opening_a_folder_creates_it_first() {
+        let temp = TempDir::new();
+        let folder = temp.join("www/shop");
+        assert!(!folder.exists());
+
+        // Whether a file manager exists in this environment is not the point -
+        // the directory being there before anything is handed to the desktop is.
+        let outcome = open_folder(&folder, Os::Linux);
+        assert!(folder.is_dir(), "the folder is created, as openFolder did");
+        if let Err(error) = outcome {
+            assert!(
+                error.to_string().contains(&folder.display().to_string()),
+                "a failure names the folder: {error}"
+            );
         }
     }
 

@@ -9,17 +9,22 @@
 > acceptance procedure below is marked `MANUAL WINDOWS TEST` and is yours to
 > run. Do not read any green test suite as evidence that the Windows build
 > works.
+>
+> What *has* been verified locally, on the current tip: the whole workspace
+> compiles for `x86_64-pc-windows-msvc` (`cargo check` and `cargo clippy`, both
+> clean with `-D warnings`), the real test suite passes on the host, and
+> `scripts/local-check/check-format.sh` is clean. Compilation is not execution;
+> the closing audit recorded it that way.
 
 Windows 10 and 11 on x86_64 are the primary target. This page covers how
 Lambo behaves there and, at the end, the manual checks that CI cannot perform.
 
 ## What is different by design
 
-Nothing in the engine asks "am I on Windows?" and then forks into a different
-implementation. Every platform decision goes through one `Os` model, which is
-an *argument*, not a compile-time switch - so Windows behaviour is exercised by
-the test suite on Linux and macOS too, and a Linux-only bug in a Windows code
-path is a test failure rather than a user's surprise.
+Platform policy is represented by the `Os` model so it can be tested on Linux
+and macOS too. Native operations, including process flags and handle inheritance,
+necessarily use host-specific implementations. Their actual Windows behaviour
+requires tests on Windows; testing the model on Unix is not a substitute.
 
 | Concern | Windows | Unix |
 | --- | --- | --- |
@@ -93,9 +98,10 @@ Either way the artifact is verified against the catalogue's digest before it is
 unpacked, exactly as a download would be. Being on the local disk is not a
 reason to skip that, and there is no flag that would.
 
-The catalogue currently ships with no pinned digests, so until they are added an
-override entry in `%USERPROFILE%\Lambo\config\catalogs\php.json` has to carry
-the `sha256`. See [configuration.md](configuration.md#artifact-sources).
+The catalogue pins a digest for PHP 8.4.2 on Windows, so this works out of the
+box; for any other version, an override entry in
+`%USERPROFILE%\Lambo\config\catalogs\php.json` has to carry the `sha256`.
+See [configuration.md](configuration.md#artifact-sources).
 
 ## Antivirus and SmartScreen
 
@@ -135,40 +141,94 @@ Run them in order on a clean Windows 10 or 11 machine, signed in as a standard
 | # | Test | What to do | Pass means | Result |
 | --- | --- | --- | --- | --- |
 | 1 | Install | Run `LamboPHP-Setup.exe` | Installs with no UAC prompt; Start Menu entry appears | MANUAL WINDOWS TEST |
-| 2 | Launch | Start Menu → Lambo PHP | `lambo-gui.exe` opens on the Dashboard; no console window behind it | MANUAL WINDOWS TEST |
-| 3 | First run | Read the Dashboard on a fresh install | Says no PHP/Apache/MariaDB yet, and how to get each - not a blank screen and not a crash | MANUAL WINDOWS TEST |
-| 4 | Add project | `cd` into a project, `lambo init`; then Projects screen | The project is registered, listed, and selectable by clicking its row | MANUAL WINDOWS TEST |
-| 5 | Select PHP | `lambo php install 8.4`; then PHP screen | Downloads, verifies the digest, and the PHP screen shows it **active** with the version PHP itself reported | MANUAL WINDOWS TEST |
+| 2 | Launch | Start Menu → Lambo PHP | `lambo-gui.exe` opens on the **Services** page; no console window behind it | MANUAL WINDOWS TEST |
+| 3 | First run | Read the **Services** page on a fresh install | Every card says what is missing and what to do about it, in its own status line - not a blank screen and not a crash | MANUAL WINDOWS TEST |
+| 4 | Add project | `cd` into a project, `lambo init`; then the **Projects** page | The project is registered, listed with its domain, and selectable by clicking its row | MANUAL WINDOWS TEST |
+| 5 | Select PHP | `lambo php install 8.4`; then the PHP-FPM card's version menu on the **Services** page | Downloads, verifies the digest, and the card shows it **active** with the version PHP itself reported | MANUAL WINDOWS TEST |
 | 6 | Start | Click **Start** | State shows **Starting…** while it works, then **Running** once the site answers. Not "Running" before it answers | MANUAL WINDOWS TEST |
 | 7 | localhost | Open `http://localhost` | The project renders. Port 80, no `:8080` | MANUAL WINDOWS TEST |
 | 8 | phpMyAdmin | Click **Open phpMyAdmin** | Opens `http://localhost/phpmyadmin` through Apache, prefilled, no password in the URL | MANUAL WINDOWS TEST |
 | 9 | PHP script | Put `<?php phpinfo();` in the document root and reload | `phpinfo()` renders, showing Lambo's generated `php.ini` as the loaded file | MANUAL WINDOWS TEST |
-| 10 | Database | `lambo db create demo`, then Database screen | The database is created; the screen shows the server, the manager and its URL | MANUAL WINDOWS TEST |
+| 10 | Database | `lambo db create demo`, then the MySQL card on the **Services** page | The database is created; the card shows the server running and the phpMyAdmin card offers the manager's URL | MANUAL WINDOWS TEST |
 | 11 | Stop | Click **Stop** | **Stopping…**, then everything stops. `tasklist` shows no Lambo-owned processes left | MANUAL WINDOWS TEST |
 | 12 | Restart | Start, stop, start again | Comes back cleanly; no stale PID complaint, no orphaned process | MANUAL WINDOWS TEST |
 | 13 | Port conflict | Occupy port 80, then **Start** | State reads **Failed**, the notice names the service and the remedy. No Rust backtrace | MANUAL WINDOWS TEST |
 | 14 | Reboot | Reboot Windows, then `lambo status` and launch the GUI | Nothing claims to be running; starting works normally | MANUAL WINDOWS TEST |
-| 15 | Tray | - | **NOT IMPLEMENTED.** Lambo has no system tray icon and no start-with-Windows option. Do not test this as a feature; if you want it, it is a future request | N/A |
-| 16 | Browser opening | Let Lambo open the browser for you (`lambo up`, **Open localhost**) | Your default browser opens the exact URL the Dashboard shows | MANUAL WINDOWS TEST |
+| 15 | Tray | Close the window, then right-click the tray icon | The window disappears but the services keep running. The menu reads **Show Lambo PHP**, **Start Stack**, **Stop All**, **Auto-start with Windows**, **Quit**; double-clicking the icon brings the window back | MANUAL WINDOWS TEST |
+| 16 | Browser opening | Let Lambo open the browser for you (`lambo up`, or the phpMyAdmin card's own button) | Your default browser opens the exact URL the Services page shows | MANUAL WINDOWS TEST |
 | 17 | Upgrade | Install a newer `LamboPHP-Setup.exe` over the top | No UAC prompt, no "uninstall first"; projects, PHP installs, databases, config and logs all survive | MANUAL WINDOWS TEST |
 | 18 | Uninstall | Run the uninstaller, then check `%USERPROFILE%\Lambo` | Application and Start Menu entries gone; **your data still present** | MANUAL WINDOWS TEST |
 | 19 | Portable ZIP | Extract `LamboPHP-<version>-windows-amd64.zip` somewhere and run `lambo.exe` from it | Works with no install; contains `lambo.exe`, `lambo-gui.exe`, both licences and `README.txt` - and no test fixtures | MANUAL WINDOWS TEST |
-| 20 | CLI | `lambo --version`, `lambo doctor`, `lambo status` in a terminal | Version matches the GUI's About screen; doctor and status agree with the Dashboard | MANUAL WINDOWS TEST |
+| 20 | CLI | `lambo --version`, `lambo doctor`, `lambo status` in a terminal | Version matches the Settings page's About rows; doctor and status agree with the Services page | MANUAL WINDOWS TEST |
 
 Two notes on what this build can and cannot do:
 
-- **Runtime downloads are fail-closed.** The shipped catalogue pins no
-  `sha256` for PHP, Apache, MariaDB or phpMyAdmin, so `lambo php install` and
-  `lambo db install-ui` will refuse until a digest is pinned in
-  `<home>/config/catalogs/`. That is deliberate: Lambo never extracts or runs
-  a download it cannot verify. Steps 5, 8 and 10 therefore need a pinned
-  digest, or a runtime placed by hand. See
-  [installation.md](installation.md).
+- **Runtime downloads are fail-closed.** The shipped catalogue pins a `sha256`
+  for PHP 8.4.2 on Windows, the Apache Lounge httpd build, both MariaDB
+  Windows zips and phpMyAdmin, so steps 5, 8 and 10 work out of the box on
+  Windows. Anything else - older PHP versions, Oracle MySQL, Adminer, the
+  Linux/macOS PHP builds - refuses until a digest is pinned in
+  `<home>/config/catalogs/`, because Lambo never extracts or runs a download
+  it cannot verify. See [installation.md](installation.md).
 - **No checksum was invented to make this easier.** Pinning one requires the
   real upstream artifact, which is a release step, not a guess.
 
 If a step fails, open an issue with `lambo doctor` output and
 `lambo logs apache -n 200`.
+
+### GUI checks added in the phase-8 closeout
+
+Six panel behaviours were restored in that pass and have no automated way to run
+them: the card's version menu (which the sweep found unreachable), the switch's
+narration and its recording in `config.json`, the settings page's `PATH` and
+elevation messages, and the DWM frame. They are all still **MANUAL WINDOWS
+TESTS**, and they are the four fixes the closeout pass listed:
+
+| # | Test | Pass means | Result |
+| --- | --- | --- | --- |
+| 21 | Version menu | `Ver ▾` on a card with variants opens a menu titled `Switch <name> version`, one line per build, a check mark on the active one; right-clicking the card opens the same menu at the cursor | MANUAL WINDOWS TEST |
+| 22 | Version switch | Picking another build on a *running* service logs `[<name>] stopping before version switch`, then the download, then `[<name>] switched to <version>`; the check mark moves, and it is still there after closing and reopening the panel | MANUAL WINDOWS TEST |
+| 23 | Failed switch | With the network off, a switch logs `[<name>] switch <version> failed: …` and the card keeps the build it had | MANUAL WINDOWS TEST |
+| 24 | PATH actions | `Add tools to PATH` logs `path: added N Lambo bin dirs to user PATH` and `path: open a NEW terminal to use them`; again → `path: already on PATH (no changes)`; `Remove from PATH` twice → the count, then `path: nothing to remove` | MANUAL WINDOWS TEST |
+| 25 | Restart as Admin | Declining the UAC prompt logs `elevate: …` and the panel stays open; accepting logs `relaunching as administrator — this instance will exit` and an elevated panel replaces it | MANUAL WINDOWS TEST |
+| 26 | Frame | On a Windows 11 machine set to dark, the panel has rounded corners and a dark title bar matching its palette | MANUAL WINDOWS TEST |
+
+### Checks added in the phase-9 completion pass
+
+| # | Test | Pass means | Result |
+| --- | --- | --- | --- |
+| 27 | Apps & features | Settings -> Apps -> Installed apps lists **Lambo PHP** with the release version; **Uninstall** from there runs the uninstaller | MANUAL WINDOWS TEST |
+| 28 | Star on GitHub | The Settings page's **★ Star on GitHub** button opens the repository address in the default browser. A build with no `repository` in its metadata logs `repository: no address is compiled into this build` and does nothing else | MANUAL WINDOWS TEST |
+| 29 | Upgrade from the previous implementation | Point `LAMBO_HOME` at an installation directory that holds the other application's `config.json`, hosts file and `downloads/`; then `lambo doctor` and the panel | The state loads (thirty services, its virtual hosts and projects); the hosts file has **one** managed block with Lambo's markers and no duplicate lines; a valid archive in `downloads/` is not downloaded again; nothing in that directory is deleted or renamed | MANUAL WINDOWS TEST |
+| 30 | Landing page | Start the panel | It opens on the landing page with the product name, the tagline, and three buttons; **Start Stack & Open Welcome Page** starts the essentials and opens the welcome page, **Open Welcome Page** opens `http://localhost`, and **Open Dashboard** goes to the projects page | MANUAL WINDOWS TEST |
+| 31 | Load a project from a folder | On the projects page, press **Browse…**, pick a folder that holds an existing project in Windows Explorer, press **Open Project** | The log names the project, the detection's summary and the URL; the project appears in the list with its domain and is selected; the browser opens on the domain | MANUAL WINDOWS TEST |
+| 32 | Verify | Run `lambo verify` in a terminal | Every diagnostic check runs, the catalogue is checked as a release gate, every cached download is checked against its pinned SHA-256, and the exit code is `0` when all of it holds | MANUAL WINDOWS TEST |
+
+## If nothing starts at all
+
+A release candidate of this product was reported to fail at launch with:
+
+```text
+The application was unable to start correctly (0xc000001e).
+```
+
+That code is Windows saying it could not map the image into memory, and it is
+the one class of failure no amount of testing here can see. Work through these
+in order; each one separates a bad *download* from a bad *build*, which is the
+difference between "download it again" and "file an issue".
+
+| # | Step | What it rules out |
+| --- | --- | --- |
+| 1 | Compare the payload's hash with the release's `SHA256SUMS`: `Get-FileHash -Algorithm SHA256 .\lambo.exe`, and the same for `LamboPHP-Setup.exe` | A truncated or substituted download |
+| 2 | Run `lambo.exe --version` in a terminal, not from the Start Menu | The CLI is a console binary and the GUI a Windows-subsystem one: if the CLI runs, the engine is fine and only `lambo-gui.exe` is affected |
+| 3 | Run the executable from the extracted portable ZIP instead of the installed copy | A partial install (antivirus quarantining a file mid-install, a partly written file) |
+| 4 | Check `%LOCALAPPDATA%\Programs\LamboPHP` for both executables and their sizes | A missing or zero-length payload file |
+| 5 | Run it on a second machine, or with antivirus temporarily disabled | A machine-specific image-mapping problem (antivirus, Exploit Protection / ASLR overrides, a corrupted `LoadAppInit_DLLs` list) |
+| 6 | Record the Windows build (`winver`), whether it is x64 or ARM, and the output of `lambo doctor` | Whether this is an architecture or an OS-version problem |
+
+The evidence that makes this diagnosable is the hash of the file that failed,
+`winver`, and the results of steps 1-3. Everything below assumes the
+application starts.
 
 ## Manual smoke test
 
@@ -255,16 +315,21 @@ whether it draws.
 
 | # | Step | Expect |
 | --- | --- | --- |
-| 29 | Start Menu → Lambo PHP, or run `lambo-gui.exe` | The window opens with the Dashboard; no console window behind it |
-| 30 | Read the Dashboard against `lambo status` in a terminal | Same project, same per-service states, same URL. Any disagreement is a bug |
-| 31 | **About** | Shows the same version as `lambo --version`, plus the real home, data, config and log paths - all of which must exist on disk |
-| 32 | **Open localhost** | The browser opens the URL the Dashboard shows, not a hard-coded one |
-| 33 | **Open phpMyAdmin** | Opens `http://localhost/phpmyadmin`; enabled only when a manager is installed |
-| 34 | Click **Stop**, then **Start** | Buttons enable and disable with the actual state; a second Start while running does nothing harmful |
-| 35 | Kill `httpd` in Task Manager, wait for the next refresh | The row stops claiming it is running; the overall state reflects it |
-| 36 | Make a start fail (occupy port 80 first), then **Start** | The state reads **Failed**, the notice names the service that failed, and the message is in English - **no Rust backtrace** |
-| 37 | Every other screen | Projects, PHP, Services, Database, Logs and Settings each show real values, not placeholders |
-| 38 | Close the window | Lambo's services keep running; the GUI is a view, not a supervisor |
+| 29 | Start Menu → Lambo PHP, or run `lambo-gui.exe` | The window opens on **Services**; no console window behind it |
+| 30 | Read the cards against `lambo status` in a terminal | Same services, same states, same URL. Any disagreement is a bug |
+| 31 | The page strip, and **Settings** | Five pages - Services, Projects, Editor, Virtual Hosts, Settings - and the Settings page's About rows show the same version as `lambo --version`, plus the real install, config, vhost, hosts-file and cache paths |
+| 32 | **Start Stack** on the Services page, then **Stop All** | The progress bar moves, the log fills with the services' own lines, and the whole stack comes up and goes down: the page's pass installs a missing component, skips a disabled service and opens the site when it is done |
+| 33 | The phpMyAdmin card's button | Opens the manager's URL through Apache; it is offered only once the manager is installed |
+| 34 | Click **Stop**, then **Start** on a card | Buttons enable and disable with the actual state; a second Start while running does nothing harmful |
+| 35 | Kill `httpd` in Task Manager, wait for the next refresh | The card stops claiming it is running, without waiting for the window to be touched |
+| 36 | Make a start fail (occupy port 80 first), then **Start** | The card reads **Failed** with the engine's own reason, and the message is in English - **no Rust backtrace** |
+| 37 | The other pages | Projects, Editor (load, edit, save - and it says when there is unsaved work), Virtual Hosts (add, edit, delete, apply, with the form's validation messages) and Settings each show real values, not placeholders |
+| 38 | Minimise, then close the window | Both hide it to the tray; Lambo's services keep running and the tray menu still talks to them. Only **Quit** stops them, and `lambo-gui.exe --tray` starts hidden |
+
+Two things the checklist above does not cover, because they need a second session:
+Windows' own light/dark preference (the panel follows it, with no setting of its
+own) and the display's DPI scaling (the card grid and the log are laid out in the
+display's pixels, and the window's minimum size is fixed at 560x500).
 
 **Upgrade** - an upgrade replaces the application and must not touch anything
 the user created.
@@ -294,3 +359,42 @@ the user created.
 
 If any step fails, please open an issue with the output of `lambo doctor` and
 `lambo logs apache -n 200`.
+
+## Detached service handle isolation
+
+On Windows, detaching a console and selecting standard streams are separate
+from controlling handle inheritance. With the Rust 1.88 implementation used by
+CI, [ordinary `Command::spawn()`](https://github.com/rust-lang/rust/blob/1.88.0/library/std/src/sys/process/windows.rs)
+calls `CreateProcessW` with inheritance enabled and no handle list. `STARTF_USESTDHANDLES` chooses stdin/stdout/stderr, but does
+not prevent inheritance of *other* handles already marked inheritable. Thus a
+PHP process could log correctly while still retaining the CLI's captured pipe
+writers. The CLI exited zero, but its caller never received pipe EOF.
+
+Detached `process::spawn` calls now use `lambo-process-windows`, a private FFI
+crate. It supplies `STARTUPINFOEXW` and `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` with
+only three owned duplicates of the intended null/file stdio handles. It keeps
+`DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`; it neither changes the parent's
+handle flags nor falls back to unrestricted inheritance. The process and thread
+handles returned by Windows are non-inheritable. Temporary duplicates and the
+attribute-list allocation are released on all paths. Inherited terminal stdio
+is rejected for detached services; interactive foreground commands are unchanged.
+
+This FFI boundary is necessary because the stable Rust API at the project's
+MSRV cannot supply process attributes or construct `std::process::Child` from a
+native process handle. `process::Child` therefore exposes the owned Windows
+process handle through `id`, `wait`, `try_wait`, and `kill`; on Unix it remains
+`std::process::Child`. Dropping either type does not terminate the service.
+`lambo-core` still forbids unsafe code. Only the private Windows crate permits
+FFI, with owned-handle/allocation guards and call-site safety comments.
+
+All managed long-running services (PHP, Apache, database and standalone database
+UI) share this detached spawn boundary. Short-lived captured helpers and Unix
+spawning are unchanged.
+
+`tests/windows_handle_inheritance.rs` exercises a captured launcher that starts
+a detached service through the production spawn function. It requires the
+launcher's stdout/stderr to reach EOF **while the service remains alive**, checks
+that both service streams reached its log, and then cooperatively releases the
+service. No service is killed to force capture to complete. The CLI's bounded
+capture helper is retained to make a recurrence fail with the command name,
+exit status and EOF state instead of hanging the whole test suite.

@@ -72,13 +72,12 @@ next one runs:
 
 A failure stops the sequence and explains itself: what failed, the plausible
 causes, the log to read, and the command to run next. Whatever did start is
-recorded, so `lambo down` can still clean up.
+held by the engine, so `lambo down` can still clean up.
 
 ### `lambo down`
 
-Stops every service Lambo started, in reverse start order. Only processes with
-a record in Lambo's state file are touched - a database you started yourself is
-left running.
+Stops every service Lambo started. Only the processes the engine holds are
+signalled - a database you started yourself is left running.
 
 ### `lambo restart`
 
@@ -138,6 +137,19 @@ catalogue publishes Apache for Windows only, and MariaDB and MySQL for Windows
 and Linux only - so on macOS those checks report `unsupported` with the
 workaround (`server.kind: php`, or install the server yourself and Lambo will
 find it) instead of a failure no command can fix.
+
+### `lambo verify`
+
+Verifies the installation rather than describing it. It runs the whole
+diagnostic suite and then adds the two gates a plain diagnosis leaves out:
+
+- the catalogue must be releasable - every entry carries a pinned SHA-256 and
+  valid metadata - and
+- every cached download must still match the digest the catalogue pins for it.
+
+A download is verified as it lands, so a cache entry that no longer matches
+was changed afterwards; `verify` names it and tells you to replace it. Exits
+`1` when anything failed, which is what makes it usable as a pipeline gate.
 
 ### `lambo logs [group]`
 
@@ -314,6 +326,76 @@ configuration, so a project behaves identically inside and outside one.
 
 ---
 
+## `lambo frameworks`
+
+| Command | Effect |
+| --- | --- |
+| `lambo frameworks` | List the catalogue: runtime, required tools, dev-server port, description |
+| `lambo frameworks create <framework> <name> [--domain <domain>]` | Scaffold a framework into the installation's `www/`, register the project and its virtual host, and rewrite the hosts file |
+| `lambo frameworks delete <name>` | Delete a project: its directory, its registration, and its domain in the hosts file and the server configurations |
+| `lambo frameworks domain <name> <domain>` | Move a project to another domain, and publish it there |
+
+`<framework>` is one of the seventeen names the list prints (`Laravel`, `Laravel
++ Livewire`, `Symfony`, `CodeIgniter 4`, `WordPress`, `Next.js`, `Vite + React`,
+`Express`, `NestJS`, `AdonisJS`, `Flask`, `Django`, `FastAPI`, `Go HTTP server`,
+`Gin (Go)`, `Spring Boot`, `Static HTML`). `<name>` is slugified: `My Shop!`
+becomes `my-shop`, which is the directory under `www/` and, unless `--domain`
+says otherwise, the domain (`my-shop.test`).
+
+A framework whose dev server has a port (Next.js 3000, Vite + React 5173, Flask
+5000, Django and FastAPI 8000, the Go ones 8080, Express and NestJS 3000,
+AdonisJS 3333) is published as a reverse-proxy vhost: Apache answers on port 80
+for the domain and forwards to that port, so the framework's own start command
+does not have to change.
+
+`lambo frameworks domain shop shop.lan` is the projects page's domain edit: the
+project's row, every virtual host on its old domain, the hosts file and the
+Apache include all move together, and the project's **files do not move** - a
+domain is a name, and the document root stays the project's own directory. An
+unknown project name prints a note and exits `0`; nothing is created.
+
+The work is done by the same calls the GUI's projects page makes
+(`lambo_core::session::create_project`, `delete_project`, `set_project_domain`),
+so both interfaces scaffold, register, rename and publish identically.
+
+---
+
+## `lambo vhosts`
+
+| Command | Effect |
+| --- | --- |
+| `lambo vhosts` | List the virtual hosts, and the three files an apply writes |
+| `lambo vhosts add <domain> <docroot> [--port <port>] [--server apache\|nginx\|both]` | Add a virtual host for a domain and a document root |
+| `lambo vhosts edit <domain> [--to <domain>] [--docroot <path>] [--port <port>] [--server <s>]` | Change the fields that are named; everything else stays as it is |
+| `lambo vhosts delete <domain>` | Remove a virtual host from the document |
+| `lambo vhosts apply` | Write the hosts file and the server configurations ("Apply to System") |
+
+This is the virtual-hosts page from a terminal, and it is the same
+implementation: the form is validated by the page's own rules
+(`lambo_core::vhost::read_vhost_form`, ported from the original's `readVhostForm`), the
+rows are the page's five cells, and saving a host keeps the enabled flag of the
+row it replaces. `<docroot>` may contain `{base}` for the installation
+directory - `lambo vhosts add shop.test '{base}/www/shop'` - and it is stored in
+that spelling, unexpanded, exactly as the page stores it.
+
+Two things follow the page rather than a script's expectations:
+
+* **Saving publishes nothing.** `add`, `edit` and `delete` change the document
+  only, so a batch of edits is one publication. `lambo vhosts apply` writes the
+  hosts file, the Apache include and the nginx sites; without it, nothing a
+  server reads has changed.
+* **Refusals are the page's.** `domain name is required`, `docroot is required`
+  and `invalid port: <what you typed>` come from the same function the page
+  calls, and are printed on stderr with a non-zero exit code so a script can test
+  for them.
+
+A port of `0` on a stored row means `80` when it is written and when it is shown,
+and an empty server type means `apache` - both are the page's own defaults.
+Adding a domain that is already registered replaces that row; adding a name with
+no dot gets the default `.test` extension (`shop` becomes `shop.test`).
+
+---
+
 ## Exit codes
 
 | Code | Meaning |
@@ -322,4 +404,4 @@ configuration, so a project behaves identically inside and outside one.
 | `1` | The command failed; the reason is on stderr with its causes and the next step |
 | *n* | `lambo php …` returns PHP's own exit status |
 
-`lambo doctor` exits `1` when any check failed.
+`lambo doctor` and `lambo verify` exit `1` when any check failed.

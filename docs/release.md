@@ -20,9 +20,13 @@ trust.
 ## Cutting a release
 
 1. **Verify the gaps are still the gaps.** Read
-   [roadmap.md](roadmap.md#known-gaps) and say plainly in the release notes
-   what does not work yet - for 0.2.0 that is unpinned checksums, no macOS
-   server builds, and no TLS.
+   [roadmap.md](roadmap.md#next-in-priority-order),
+   and say plainly in the release notes what does not work yet. Today that is
+   the catalogue entries no publisher digest exists for (the static-php PHP
+   builds, Oracle MySQL, Adminer - see
+   [roadmap.md](roadmap.md#1-pinned-checksums-for-every-catalogue-entry)), no
+   macOS server builds, no TLS, and an application window nobody has watched
+   run.
 
 2. **Run the whole suite locally**, on the platform you have:
 
@@ -49,12 +53,29 @@ trust.
    git push origin main --tags
    ```
 
-   The `Release` workflow builds all five platforms, packages them, checksums
-   them, verifies the manifest covers every file, and publishes the GitHub
-   release.
+   The `Release` workflow in the published repository builds all five platforms,
+   packages them, checksums them, verifies the manifest covers every file, and
+   publishes the GitHub release.
+
+   **Where that workflow lives, and what this checkout can verify.** This work
+   tree carries `.github/workflows/ci.yml` and nothing else: the release
+   pipeline is part of the published repository, so steps 1-4 above are all it
+   can run. The packaging itself is here and is the same code the pipeline
+   calls - `scripts/package.sh`, `scripts/build-windows.ps1` and
+   `scripts/installer.ps1` - and `docs/windows.md`'s checklist covers what a
+   release candidate has to pass on a real machine. Do not read a green local
+   run as a published release.
+
+   A workflow file also cannot be edited from a session whose token lacks the
+   App's `workflows` permission: the push is refused with `refusing to allow a
+   GitHub App to create or update workflow ... without workflows permission`,
+   which is a permissions fact rather than a content one. Whoever holds that
+   permission applies those one-line changes.
 
 6. **Check the release.** Download `SHA256SUMS` and one archive, verify, run
-   `lambo --version` and `lambo doctor` from the extracted binary.
+   `lambo --version` and `lambo doctor` from the extracted binary. For Windows,
+   also run step 1 of [windows.md](windows.md#if-nothing-starts-at-all): compare
+   the installed executables against the release hashes.
 
 ## Building an artifact by hand
 
@@ -114,10 +135,12 @@ It validates metadata only and never downloads an artifact, so it is cheap
 enough to run on every commit as well as before tagging. Exit code is non-zero
 when anything blocks.
 
-Against the current catalogue it reports **0 development-blocking issues and 20
-release-blocking ones** - every entry, because none carries a pinned digest.
-That is the honest state, not a regression: the gate exists so the state cannot
-ship unnoticed.
+Against the current catalogue it reports **0 development-blocking issues and 13
+release-blocking ones** - the entries whose publishers expose no usable digest
+(the static-php PHP builds, Oracle MySQL, Adminer and the two older Windows PHP
+archives, which still verify through their upstream sidecars at run time where
+those exist). The release gate is stricter than the run-time rule by design: a
+release should not depend on a file Lambo does not control.
 
 ## Catalogue checksums
 

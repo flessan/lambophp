@@ -281,11 +281,25 @@ fn is_safe_component(value: &str) -> bool {
 /// that need to point at a real file.
 pub fn file_url_to_path(url: &str) -> Option<PathBuf> {
     let stripped = url.strip_prefix("file://")?;
-    // On Windows the URL form is `file:///C:/…`; elsewhere `file:///home/…`.
-    let path = if cfg!(windows) {
+    // The URL form of a Windows drive path is `file:///C:/…`, and only the
+    // slash standing before the drive letter is foreign to the path. A POSIX
+    // path a mirror entry kept from another machine (`file:///srv/…`) owns
+    // its leading slash: strip it and an absolute path becomes a relative one.
+    let path = if cfg!(windows) && names_a_drive_path(stripped) {
         stripped.trim_start_matches('/')
     } else {
         stripped
     };
     (!path.is_empty()).then(|| Path::new(path).to_path_buf())
+}
+
+/// Whether the remainder of a `file://` URL names a Windows drive path:
+/// `/C:…`, `/d:…` - a slash, an ASCII letter, a colon.
+pub(crate) fn names_a_drive_path(remainder: &str) -> bool {
+    let mut chars = remainder.chars();
+    chars.next() == Some('/')
+        && chars
+            .next()
+            .is_some_and(|letter| letter.is_ascii_alphabetic())
+        && chars.next() == Some(':')
 }

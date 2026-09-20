@@ -1,16 +1,29 @@
 # Lambo PHP workspace root.
 #
 # Crate map (docs/architecture.md):
-#   crates/lambo-core  - the core engine; owns ALL business logic
-#   crates/lambo-cli   - the `lambo` binary; a thin shell over lambo-core
+#   crates/lambo-core            - the core engine; owns ALL business logic
+#   crates/lambo-cli             - the `lambo` binary; a thin shell over lambo-core
+#   crates/lambo-gui             - the Win32 panel; a thin shell over lambo-core
+#   crates/lambo-process-windows - the Win32 process backend lambo-core calls
 #
-# Future interfaces join as `crates/lambo-tui` (ratatui) and the Tauri GUI.
-# Both are thin shells over lambo-core by architectural rule, which is what
-# keeps CLI, TUI and GUI behaviour identical.
+# There are exactly two interfaces and one engine:
+#
+#   GUI ─┐
+#        ├──> lambo-core
+#   CLI ─┘
+#
+# Any further interface joins the same way. Keeping every shell thin is what
+# makes CLI and GUI behaviour identical; a second implementation of any rule is
+# the one thing this layout exists to prevent.
 
 [workspace]
 resolver = "3"
-members = ["crates/lambo-core", "crates/lambo-cli", "crates/lambo-gui"]
+members = [
+    "crates/lambo-core",
+    "crates/lambo-cli",
+    "crates/lambo-gui",
+    "crates/lambo-process-windows",
+]
 
 [workspace.package]
 version = "0.14.0-rc.1"

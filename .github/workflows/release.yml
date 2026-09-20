@@ -1,0 +1,60 @@
+name: Release
+
+# Pushing a version tag builds the native application and publishes it as a
+# GitHub release. The artefact is the pair of Windows executables - the `lambo`
+# CLI and the `lambo-gui` panel - zipped with the licences and a SHA-256
+# checksum, because a release whose bytes nobody can check is not a release.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: build and publish (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build the native application
+        run: cargo build --release --locked
+
+      # Smoke-test the very binaries that get published: the CLI answers its
+      # version, and the panel's detached helper half runs a command - both
+      # without opening a window, which a build agent does not have.
+      - name: smoke-test the binaries
+        run: |
+          .\target\release\lambo.exe --version
+          .\target\release\lambo.exe --help
+          .\target\release\lambo-gui.exe --hide-run cmd /c exit 0
+
+      - name: package the release artefact
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          $stage = "lambo-php-$version-windows-x64"
+          New-Item -ItemType Directory $stage | Out-Null
+          Copy-Item target\release\lambo.exe $stage\
+          Copy-Item target\release\lambo-gui.exe $stage\
+          Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $stage\
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          $hash = (Get-FileHash "$stage.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $stage.zip" | Set-Content "$stage.zip.sha256"
+
+      - name: publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            lambo-php-*-windows-x64.zip
+            lambo-php-*-windows-x64.zip.sha256

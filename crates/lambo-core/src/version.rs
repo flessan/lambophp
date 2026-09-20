@@ -26,9 +26,10 @@ pub const LATEST: &str = "latest";
 pub const NIGHTLY: &str = "nightly";
 
 /// A user-facing PHP version specification.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub enum VersionSpec {
     /// Newest generally-available release.
+    #[default]
     Stable,
     /// Newest known release regardless of stability.
     Latest,
@@ -53,12 +54,6 @@ impl VersionSpec {
             Self::Req(req) => req.matches(version),
             Self::Stable | Self::Latest | Self::Nightly => false,
         }
-    }
-}
-
-impl Default for VersionSpec {
-    fn default() -> Self {
-        Self::Stable
     }
 }
 

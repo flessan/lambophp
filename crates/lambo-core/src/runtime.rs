@@ -791,28 +791,68 @@ pub fn remove(paths: &Paths, kind: RuntimeKind, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// The recorded services whose command line runs out of `runtime_dir`.
+/// The spellings of a directory that a path under it may use.
 ///
-/// Only services Lambo started and can still account for are considered. A
-/// stale record for a process that is gone must not block a removal, so
-/// liveness is re-checked rather than trusted.
+/// A Windows path may be written either way, and a recorded command line is
+/// compared textually, so all three forms are checked.
+fn path_spellings(directory: &Path) -> [String; 3] {
+    let text = directory.to_string_lossy().into_owned();
+    [
+        text.clone(),
+        text.replace('\\', "/"),
+        text.replace('/', "\\"),
+    ]
+}
+
+/// Whether a running service is running out of `runtime_dir`.
+///
+/// A service is "using" a runtime when the executable it was started from, or
+/// the directory it runs in, is inside it - `{base}/php/8.4.2/php-cgi.exe` for
+/// the PHP runtime. Comparing the paths is what the previous implementation did
+/// with the recorded command line; asking the engine is what makes a service
+/// that has since died stop blocking the removal.
+fn uses_directory(exe_path: &Path, work_dir: Option<&Path>, wanted: &[String; 3]) -> bool {
+    let spellings = |path: &Path| path_spellings(path);
+    spellings(exe_path).iter().any(|path| {
+        wanted
+            .iter()
+            .any(|needle| !needle.is_empty() && path.contains(needle.as_str()))
+    }) || work_dir.is_some_and(|dir| {
+        spellings(dir).iter().any(|path| {
+            wanted
+                .iter()
+                .any(|needle| !needle.is_empty() && path.contains(needle.as_str()))
+        })
+    })
+}
+
+/// The running services that are using a directory, by name.
+///
+/// A configuration that cannot be read is not a refusal to remove: nothing is
+/// known to be running out of the runtime, and pretending otherwise would make
+/// a broken `config.json` unremovable.
 fn services_using(paths: &Paths, runtime_dir: &Path) -> Result<Option<String>> {
-    let state = crate::state::State::load(paths)?;
-    let os = Os::host();
-    for record in state.services.values() {
-        if !record.is_alive(os) {
+    let wanted = path_spellings(runtime_dir);
+    let Ok(config) = crate::panel::PanelConfig::load(paths.root()) else {
+        return Ok(None);
+    };
+    let stack = crate::stack::Stack::build(
+        paths.root(),
+        &config,
+        std::sync::Arc::new(crate::service::HostService::new()),
+        crate::logs::nop_log(),
+    );
+
+    for service in stack.services() {
+        let Some(engine) = service.service() else {
+            continue;
+        };
+        if !service.running() {
             continue;
         }
-        // The command line is recorded verbatim at start, so a runtime in use
-        // appears in it as a path prefix. Both separators are checked because
-        // a Windows command line may be recorded either way.
-        let wanted = [
-            runtime_dir.to_string_lossy().into_owned(),
-            runtime_dir.to_string_lossy().replace('\\', "/"),
-            runtime_dir.to_string_lossy().replace('/', "\\"),
-        ];
-        if wanted.iter().any(|needle| record.command.contains(needle)) {
-            return Ok(Some(record.name.clone()));
+        let config = engine.config();
+        if uses_directory(&config.exe_path, config.work_dir.as_deref(), &wanted) {
+            return Ok(Some(service.name().to_owned()));
         }
     }
     Ok(None)
@@ -878,11 +918,6 @@ mod tests {
 
     #[cfg(not(unix))]
     fn mark_executable(_path: &Path) {}
-
-    /// The primary executable name `home_with` creates, for this platform.
-    fn os_executable_name() -> &'static str {
-        if cfg!(windows) { "php.exe" } else { "php" }
-    }
 
     #[test]
     fn an_install_records_a_manifest_that_verify_accepts() {
@@ -1003,46 +1038,64 @@ mod tests {
     }
 
     #[test]
-    fn removing_a_runtime_a_live_service_is_using_is_refused() {
+    fn a_service_running_out_of_a_runtime_is_recognised() {
+        // The check that keeps a runtime from being deleted under a running
+        // service. It is a decision about paths, so it is verified as one: the
+        // service's executable (or its working directory) sitting inside the
+        // runtime is what marks it as in use.
+        let runtime_dir = Path::new("C:/lambo/php/8.4.2");
+        let wanted = path_spellings(runtime_dir);
+
+        assert!(uses_directory(
+            &runtime_dir.join("php-cgi.exe"),
+            None,
+            &wanted
+        ));
+        assert!(uses_directory(
+            Path::new("C:/lambo/bin/php/php.exe"),
+            Some(runtime_dir),
+            &wanted
+        ));
+        // Both separator spellings of the same directory are recognised.
+        assert!(uses_directory(
+            Path::new("C:\\lambo\\php\\8.4.2\\php-cgi.exe"),
+            None,
+            &wanted
+        ));
+
+        assert!(!uses_directory(
+            &Path::new("C:/lambo/php/8.3.0").join("php-cgi.exe"),
+            None,
+            &wanted
+        ));
+        assert!(!uses_directory(
+            Path::new("C:/lambo/bin/php/php.exe"),
+            None,
+            &wanted
+        ));
+    }
+
+    #[test]
+    fn nothing_running_blocks_a_removal() {
+        // An installation whose services are all stopped - the usual case - has
+        // nothing using the runtime, so the removal goes through. A stale
+        // record used to make this the interesting case; there are no stale
+        // records any more.
         let (_temp, paths) = home_with(RuntimeKind::Php, &["8.4.2"], Os::Linux);
         let dir = paths.runtime_version_dir(RuntimeKind::Php, "8.4.2");
 
-        // Record a service that is genuinely running - this process - and
-        // whose command line points into the runtime, which is what a real
-        // httpd started from that directory looks like.
-        let mut state = crate::state::State::default();
-        state.record(crate::state::ServiceRecord::new(
-            crate::state::names::APACHE,
-            std::process::id(),
-            format!("{} -f httpd.conf", dir.display()),
-        ));
-        state.save(&paths).unwrap();
-
-        let error = remove(&paths, RuntimeKind::Php, "8.4.2").unwrap_err();
-        assert!(error.to_string().contains("lambo down"), "{error}");
-        assert!(dir.exists(), "a refused removal must not delete anything");
-
-        // Once the service is gone the removal goes through.
-        crate::state::State::default().save(&paths).unwrap();
+        assert_eq!(services_using(&paths, &dir).unwrap(), None);
         remove(&paths, RuntimeKind::Php, "8.4.2").unwrap();
         assert!(!dir.exists());
     }
 
     #[test]
-    fn a_stale_service_record_does_not_block_a_removal() {
+    fn a_configuration_that_cannot_be_read_does_not_block_a_removal() {
         let (_temp, paths) = home_with(RuntimeKind::Php, &["8.4.2"], Os::Linux);
         let dir = paths.runtime_version_dir(RuntimeKind::Php, "8.4.2");
+        std::fs::write(paths.root().join("config.json"), "{ not json").unwrap();
 
-        // A PID nothing is listening on: the record is stale, and treating it
-        // as live would make the runtime permanently unremovable.
-        let mut state = crate::state::State::default();
-        state.record(crate::state::ServiceRecord::new(
-            crate::state::names::APACHE,
-            u32::MAX,
-            format!("{} -f httpd.conf", dir.display()),
-        ));
-        state.save(&paths).unwrap();
-
+        assert_eq!(services_using(&paths, &dir).unwrap(), None);
         remove(&paths, RuntimeKind::Php, "8.4.2").unwrap();
         assert!(!dir.exists());
     }
@@ -1070,20 +1123,20 @@ mod tests {
         assert!(!dir.join(MANIFEST_FILE).exists(), "nothing was recorded");
 
         // The same call with the real path succeeds and records it.
+        let expected_executable = Os::Linux.executable_name(RuntimeKind::Php.as_str());
+
         write_manifest(
             RuntimeKind::Php,
             "8.4.2",
             "linux-x64",
             &crate::sources::Resolved::catalogue("https://example.com/php.tar.gz"),
             "a".repeat(64).as_str(),
-            Some(os_executable_name()),
+            Some(expected_executable.as_str()),
             &dir,
         )
         .unwrap();
-        assert_eq!(
-            read_manifest(&dir).unwrap().executable,
-            os_executable_name()
-        );
+
+        assert_eq!(read_manifest(&dir).unwrap().executable, expected_executable);
     }
 
     #[test]

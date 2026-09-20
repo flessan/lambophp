@@ -150,8 +150,9 @@ Getting started
   open http://localhost/phpmyadmin
   lambo down      stop everything Lambo started
 
-lambo-gui.exe is the same engine with a window on it: Dashboard, Projects,
-PHP, Services, Database, Logs, Settings and About.
+lambo-gui.exe is the same engine with a window on it. Its sidebar is Services,
+Projects, Editor, Vhosts and Settings; the log panel under every page is the
+same log the CLI prints.
 
 Everything Lambo writes lives under LAMBO_HOME (%USERPROFILE%\Lambo by
 default). No administrator rights are needed, and uninstalling removes the

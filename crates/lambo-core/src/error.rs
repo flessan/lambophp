@@ -338,15 +338,19 @@ impl Error {
     }
 
     /// Builds an [`Error::ServiceFailed`] from a reason and candidate causes.
-    pub fn service_failed(
+    pub fn service_failed<I, S>(
         service: impl Into<String>,
         reason: impl Into<String>,
-        causes: impl Into<Vec<String>>,
-    ) -> Self {
+        causes: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
         Self::ServiceFailed {
             service: service.into(),
             reason: reason.into(),
-            causes: causes.into(),
+            causes: causes.into_iter().map(Into::into).collect(),
             hint: Some("lambo doctor".to_owned()),
         }
     }

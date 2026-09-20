@@ -1,7 +1,8 @@
 ; Lambo PHP - Windows installer (NSIS)
 ;
 ; Built by scripts/installer.ps1, which passes:
-;   /DVERSION=0.9.0  /DBINARY=path\to\lambo.exe  /DOUTFILE=path\to\LamboPHP-Setup.exe
+;   /DVERSION=0.14.0-rc.1  /DBINARY=path\to\lambo.exe
+;   /DOUTFILE=path\to\LamboPHP-Setup.exe
 ;   /DGUI=path\to\lambo-gui.exe   (optional; the installer works without it)
 ;
 ; Design notes:
@@ -81,6 +82,38 @@ Section "Lambo PHP" SecLambo
   WriteRegStr HKCU "Software\LamboPHP" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\LamboPHP" "Version" "${VERSION}"
 
+  ; Apps & features reads this key. A per-user install lands under
+  ; HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall, which is the
+  ; supported place for it - the machine-wide hive would need elevation.
+  ; Without it the product installs and then cannot be removed from the
+  ; Windows UI, which is a release-readiness problem rather than a nicety.
+  ${GetSize} "$INSTDIR" "/S=0K" $1 $2 $3
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "DisplayName" "Lambo PHP"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "Publisher" "Lambo PHP"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "EstimatedSize" $1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "NoModify" 1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "NoRepair" 1
+!ifdef GUI
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "DisplayIcon" "$INSTDIR\lambo-gui.exe"
+!else
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP" \
+      "DisplayIcon" "$INSTDIR\lambo.exe"
+!endif
+
   CreateDirectory "$SMPROGRAMS\Lambo PHP"
 !ifdef GUI
   CreateShortcut "$SMPROGRAMS\Lambo PHP\Lambo PHP.lnk" "$INSTDIR\lambo-gui.exe"
@@ -118,4 +151,12 @@ Section "Uninstall"
   ${EndIf}
 
   DeleteRegKey HKCU "Software\LamboPHP"
+  ; The Apps & features entry, so an uninstalled product stops being offered.
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LamboPHP"
 SectionEnd
+
+; The uninstaller removes the application and nothing else. `%USERPROFILE%\Lambo`
+; - the PHP versions, databases and projects in it - is the user's work, and a
+; per-user install has no business deleting it. `RMDir` above is not the
+; recursive form precisely so a directory the user has put something into is
+; left standing.
