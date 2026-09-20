@@ -89,6 +89,7 @@ struct Harness {
     project: TempDir,
     port: u16,
     invocation: Cell<usize>,
+    isolated: Cell<bool>,
 }
 
 impl Harness {
@@ -122,7 +123,21 @@ impl Harness {
             project,
             port,
             invocation: Cell::new(0),
+            isolated: Cell::new(false),
         }
+    }
+
+    /// Keeps the host's own programs out of the engine's reach.
+    ///
+    /// The engine prefers a Lambo-managed runtime and falls back to a program
+    /// found on the search path, so a test that asserts what happens *without*
+    /// a program must not depend on the machine it runs on - a build agent
+    /// with a packaged Apache is the very case that must fail the same way as
+    /// a machine without one. Emptying `PATH` for the child leaves only the
+    /// platform's conventional locations, which carry no web server on the
+    /// systems this suite runs on.
+    fn isolate_system_programs(&self) {
+        self.isolated.set(true);
     }
 
     /// Runs `lambo` with this home, in the project directory.
@@ -136,6 +151,9 @@ impl Harness {
             .env(lambo_core::paths::HOME_ENV, &self.home.path)
             // Never inherit a developer's own Lambo home or colour settings.
             .env("NO_COLOR", "1");
+        if self.isolated.get() {
+            command.env("PATH", "");
+        }
         capture::output(&mut command, WAIT).unwrap_or_else(|error| {
             panic!(
                 "CLI invocation #{invocation}: `lambo {}` did not complete within {WAIT:?}\n\
@@ -451,11 +469,13 @@ fn advice_about_switching_servers_names_the_file_that_actually_decides() {
     harness.expect_success(&["config", "set", "database.kind", "none"]);
     harness.expect_success(&["config", "set", "server.port", &port.to_string()]);
 
-    // lambo.yml still says apache, and no Apache build exists for this
-    // platform, so `up` fails with the advice in it.
+    // lambo.yml still says apache, and the host is kept out of reach: no
+    // Lambo-managed Apache exists and no system one may be discovered, so
+    // `up` fails with the advice in it - whatever this machine has installed.
     if cfg!(windows) {
         return; // Windows does have an Apache entry; the case does not arise.
     }
+    harness.isolate_system_programs();
     let combined = harness.expect_failure(&["up", "--no-browser"]);
     assert!(
         combined.contains("lambo.yml"),

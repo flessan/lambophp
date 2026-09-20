@@ -237,7 +237,7 @@ fn start_failure(spec: &ProcessSpec, source: std::io::Error) -> Error {
         causes: vec![
             "the executable is missing or not runnable".to_owned(),
             "antivirus software blocked the process".to_owned(),
-            format!("run `lambo doctor` to inspect the installation"),
+            "run `lambo doctor` to inspect the installation".to_owned(),
         ],
         hint: Some("lambo doctor".to_owned()),
     }

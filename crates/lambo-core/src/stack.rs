@@ -211,6 +211,18 @@ impl ManagedService {
         self.service.as_ref().and_then(|service| service.held_pid())
     }
 
+    /// The process id of this service's own process while it holds the port.
+    ///
+    /// The strict answer to "is this service serving right now": a port that
+    /// something else occupies - on Windows the System process often holds 80
+    /// through HTTP.sys - is not evidence of this service, and neither is a
+    /// copy of the program that bound a different port.
+    pub fn pid_holding_port(&self) -> Option<u32> {
+        self.service
+            .as_ref()
+            .and_then(|service| service.pid_holding_port())
+    }
+
     /// Whether the catalogue says its component is installed.
     ///
     /// A name the catalogue does not know reports `true`, which is

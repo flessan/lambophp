@@ -791,14 +791,31 @@ fn service_status(service: &ManagedService, os: Os) -> ServiceStatus {
     }
 }
 
-/// The port the installation's active web server is on, when something is
-/// listening there.
+/// The port the installation's web server serves on, when it is running.
+///
+/// The engine's own answer is the only evidence that counts. A listening port
+/// proves nothing about Lambo: on a fresh Windows machine the System process
+/// (HTTP.sys) often holds port 80 without a web server behind it, and a port
+/// merely occupied by something else is not one this installation serves. So
+/// the answer is the active web server's configured port, and only when the
+/// engine says that server is running - after a failed `up` nothing runs, and
+/// nothing is reported.
 pub fn active_http_port(paths: &Paths, _os: Os) -> Option<u16> {
     let config = PanelConfig::load(paths.root()).ok()?;
-    let port = config.service(config.active_web_server())?.port;
-    if port == 0 || !port::is_listening(port) {
+    let active = config.active_web_server();
+    let port = config.service(active)?.port;
+    if port == 0 {
         return None;
     }
+    let stack = Stack::build(
+        paths.root(),
+        &config,
+        Arc::new(HostService::new()),
+        crate::logs::nop_log(),
+    );
+    stack
+        .find(active)
+        .and_then(|service| service.pid_holding_port())?;
     Some(port)
 }
 
@@ -1776,6 +1793,25 @@ mod tests {
         // Nothing is running, so there is no port to report, whatever the
         // configuration says.
         assert_eq!(active_http_port(&context.paths, Os::host()), None);
+    }
+
+    #[test]
+    fn a_port_someone_else_holds_is_not_reported_as_the_web_port() {
+        let temp = TempDir::new();
+        let paths = temp.home();
+        paths.ensure_layout().expect("the layout");
+
+        // Give the web server a port of the test's own choosing ...
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a free port");
+        let port = listener.local_addr().expect("the address").port();
+        let mut config = PanelConfig::load(paths.root()).expect("the document");
+        config.service_mut("Apache").expect("the web server").port = port;
+        config.save(paths.root()).expect("it saves");
+
+        // ... and let something else occupy it. On a Windows build agent the
+        // System process holds port 80 exactly this way, and that occupation
+        // is not evidence that this installation serves on it.
+        assert_eq!(active_http_port(&paths, Os::host()), None);
     }
 
     #[test]

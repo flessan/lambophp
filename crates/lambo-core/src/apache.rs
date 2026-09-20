@@ -726,7 +726,12 @@ mod tests {
     fn discovery_prefers_the_managed_runtime() {
         let temp = TempDir::new();
         let paths = temp.home();
-        assert!(discover(&paths, Os::Linux).is_none());
+        // A fresh home carries no managed runtime; whatever discovery
+        // reports beyond that is the host's own Apache, never an invention.
+        assert!(
+            discover(&paths, Os::Linux).is_none_or(|apache| apache.runtime.is_none()),
+            "a fresh home has no managed runtime to prefer"
+        );
 
         testutil::install_fake_runtime(&paths, RuntimeKind::Apache, "2.4.62", Os::Linux);
         runtime::set_active(&paths, RuntimeKind::Apache, "2.4.62").unwrap();
@@ -742,11 +747,28 @@ mod tests {
     }
 
     #[test]
-    fn discovery_reports_nothing_when_apache_is_absent() {
+    fn discovery_reports_nothing_managed_when_apache_is_absent() {
         let temp = TempDir::new();
         let paths = temp.home();
-        // A brand-new Lambo home on a machine without Apache.
-        assert!(discover(&paths, Os::host()).is_none());
+        // A brand-new Lambo home has no managed runtime; whatever discovery
+        // reports on top of that is the host's own Apache, and the discovery
+        // order makes the managed one win whenever one is installed. So the
+        // claim a fresh home can make is that nothing *managed* is reported,
+        // not that the host has no Apache of its own.
+        match discover(&paths, Os::host()) {
+            None => {}
+            Some(apache) => {
+                assert!(
+                    apache.runtime.is_none(),
+                    "a fresh home has no managed runtime to report"
+                );
+                assert!(
+                    !apache.executable.starts_with(paths.root()),
+                    "a fresh home cannot contain the reported executable: {}",
+                    apache.executable.display()
+                );
+            }
+        }
     }
 
     #[test]

@@ -80,6 +80,16 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc, aarch64-unknown-linux-gnu
 
+      # The action passes the targets to `rustup toolchain install`, which is
+      # a no-op for a toolchain the runner already carries - so the targets
+      # can be declared and still not arrive. Install them outright, and
+      # print the proof: a missing target fails here, in the log, instead of
+      # deep inside `cargo check`.
+      - name: install the cross-compile targets
+        run: |
+          rustup target add x86_64-pc-windows-msvc aarch64-unknown-linux-gnu
+          rustup target list --installed
+
       - name: check for windows-msvc
         run: cargo check --workspace --all-targets --locked --target x86_64-pc-windows-msvc
 
