@@ -137,7 +137,7 @@ jobs:
           Compress-Archive lambo-php-windows-x64 lambo-php-windows-x64.zip
 
       - name: upload the native application
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lambo-php-windows-x64
           path: lambo-php-windows-x64.zip
